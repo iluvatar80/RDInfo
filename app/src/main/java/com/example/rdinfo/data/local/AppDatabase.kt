@@ -7,37 +7,37 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [
-        InfoEntity::class,
         DrugEntity::class,
-        FormulationEntity::class,
         UseCaseEntity::class,
-        DoseRuleEntity::class
+        FormulationEntity::class,
+        DoseRuleEntity::class,
+        InfoEntity::class
     ],
-    version = 2, // hochgesetzt, da wir neue Tabellen hinzufügen
+    version = 3, // bumped to trigger migration
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
+    abstract fun drugDao(): DrugDao
+    abstract fun useCaseDao(): UseCaseDao
+    abstract fun formulationDao(): FormulationDao
+    abstract fun doseRuleDao(): DoseRuleDao
     abstract fun infoDao(): InfoDao
 
-    // Neue DAO-Schnittstellen für unsere Entitäten
-    abstract fun drugDao(): DrugDao
-    abstract fun formulationDao(): FormulationDao
-    abstract fun useCaseDao(): UseCaseDao
-    abstract fun doseRuleDao(): DoseRuleDao
-
     companion object {
-        @Volatile private var INSTANCE: AppDatabase? = null
+        @Volatile
+        private var INSTANCE: AppDatabase? = null
 
-        fun get(context: Context): AppDatabase =
-            INSTANCE ?: synchronized(this) {
-                INSTANCE ?: Room.databaseBuilder(
-                    context.applicationContext,
-                    AppDatabase::class.java,
-                    "rdinfo.db"
-                )
-                    .fallbackToDestructiveMigration() // für Entwicklung ok
-                    .build()
-                    .also { INSTANCE = it }
-            }
+        fun get(context: Context): AppDatabase = INSTANCE ?: synchronized(this) {
+            val instance = Room.databaseBuilder(
+                context.applicationContext,
+                AppDatabase::class.java,
+                "rdinfo.db"
+            )
+                // In Entwicklung: löscht DB automatisch bei Schemaänderung statt zu crashen.
+                .fallbackToDestructiveMigration()
+                .build()
+            INSTANCE = instance
+            instance
+        }
     }
 }
