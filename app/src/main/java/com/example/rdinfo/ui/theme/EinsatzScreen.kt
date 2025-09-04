@@ -1,5 +1,5 @@
-// File: app/src/main/java/com/example/rdinfo/ui/theme/EinsatzScreen.kt
-package com.example.rdinfo.ui.theme
+// File: app/src/main/java/com/example/rdinfo/ui/EinsatzScreen.kt
+package com.example.rdinfo.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -11,11 +11,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.rdinfo.data.local.DoseRuleEntity
 import com.example.rdinfo.data.local.FormulationEntity
+import com.example.rdinfo.ui.theme.CalcCard
 
 /**
- * Einsatz-Screen mit datengetriebener Berechnungsbox (CalcCard) im **ui.theme**-Paket.
- * Achtung: Paketname bewusst `com.example.rdinfo.ui.theme`, damit dieser Screen
- * exakt an der Stelle eingebunden wird, an der dein Projekt ihn referenziert.
+ * Einsatz-Screen, der die Berechnungsbox über CalcCard rendert.
+ * Keine Hardcodes – Logik über DoseMath/CalcFacade; Daten (inkl. Verdünnung) kommen aus der DB.
  */
 @Composable
 fun EinsatzScreen(
@@ -34,16 +34,17 @@ fun EinsatzScreen(
                 .fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Optional: vorhandene Eingabe-UI oberhalb einhängen
+            // Optional: bestehende Eingabe-UI
             contentTop?.invoke()
 
-            // Berechnungs-Box (rechnet automatisch mit 1:10 bei Reanimation, wenn in den Daten/Regeln hinterlegt)
+            // Berechnungs-Box
             CalcCard(
                 appliedRule = appliedRule,
-                selectedFormulation = selectedFormulation,
+                selectedFormulation = selectedFormulation,  // muss die i.v.-Form (0,1 mg/ml) sein
                 manualConcMgPerMl = manualConcMgPerMl,
-                weightKg = weightKg
+                weightKg = weightKg,
             )
+
 
             // Optional: restliche Inhalte
             contentBottom?.invoke()
