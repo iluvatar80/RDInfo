@@ -1,5 +1,5 @@
-// File: app/src/main/java/com/example/rdinfo/ui/EinsatzScreen.kt
-package com.example.rdinfo.ui
+// File: app/src/main/java/com/example/rdinfo/ui/theme/EinsatzScreen.kt
+package com.example.rdinfo.ui.theme
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -11,12 +11,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.rdinfo.data.local.DoseRuleEntity
 import com.example.rdinfo.data.local.FormulationEntity
-import com.example.rdinfo.ui.theme.CalcCard
 
 /**
- * Einsatz-Screen mit datengetriebener Berechnungsbox (CalcCard).
- * Keine Medikament-Hardcodes: Verdünnungen/Konzentrationen kommen über Datenbank
- * (Formulierung + ggf. dilutionFactor in der Regel) und werden in CalcCard/DoseMath verarbeitet.
+ * Einsatz-Screen mit datengetriebener Berechnungsbox (CalcCard) im **ui.theme**-Paket.
+ * Achtung: Paketname bewusst `com.example.rdinfo.ui.theme`, damit dieser Screen
+ * exakt an der Stelle eingebunden wird, an der dein Projekt ihn referenziert.
  */
 @Composable
 fun EinsatzScreen(
@@ -38,7 +37,7 @@ fun EinsatzScreen(
             // Optional: vorhandene Eingabe-UI oberhalb einhängen
             contentTop?.invoke()
 
-            // Berechnungs-Box (rechnet automatisch mit 1:10 bei Reanimation, wenn in Daten hinterlegt)
+            // Berechnungs-Box (rechnet automatisch mit 1:10 bei Reanimation, wenn in den Daten/Regeln hinterlegt)
             CalcCard(
                 appliedRule = appliedRule,
                 selectedFormulation = selectedFormulation,
