@@ -1,3 +1,4 @@
+// File: app/src/main/java/com/example/rdinfo/data/MedsSeeder.kt
 package com.example.rdinfo.data
 
 import android.content.Context
@@ -11,7 +12,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Seeder/Importer für assets/meds.json – inkl. Hotfix für Adrenalin-Konzentration.
+ * Seeder/Importer für assets/meds.json – DATENGETRIEBEN.
+ *
+ * – Keine Hardcodes zu Medikamenten in der App-Logik.
+ * – Korrekturen (z. B. Adrenalin 1 mg/mL, Reanimation 1:10) werden als **Datenpatch** geschrieben:
+ *   Formulierungen/Konzentrationen und `dose_rule.dilutionFactor`.
  */
 object MedsSeeder {
 
@@ -25,11 +30,11 @@ object MedsSeeder {
             db.useCaseDao().deleteAll()
             db.drugDao().deleteAll()
             insertAllFromJson(db, src)
-            applyHotfixes(db) // wichtig: Adrenalin 1 mg/ml
+            applyDataPatches(db)
         }
     }
 
-    /** Füllt nur initial; bestehende Daten bleiben erhalten. */
+    /** Füllt nur initial; bestehende Daten bleiben erhalten und werden gepatcht. */
     suspend fun seedFromAssetsIfEmpty(context: Context) = withContext(Dispatchers.IO) {
         val db = AppDatabase.get(context)
         val hasAny: Boolean = db.openHelper.readableDatabase
@@ -38,12 +43,9 @@ object MedsSeeder {
 
         if (!hasAny) {
             val src: MedsData = MedsJsonImporter.load(context)
-            db.withTransaction {
-                insertAllFromJson(db, src)
-            }
+            db.withTransaction { insertAllFromJson(db, src) }
         }
-        // Hotfix immer ausführen (wirkt auch bei bereits befüllter DB)
-        applyHotfixes(db)
+        applyDataPatches(db)
     }
 
     // --------------------------------------------------------
@@ -80,45 +82,29 @@ object MedsSeeder {
                 )
             }
 
-            // Formulierungen (mit sanfter Korrektur bekannt fehlerhafter Werte)
+            // Formulierungen
             val formIdByKey = mutableMapOf<String, Long>()
             d.forms.forEach { f ->
-                val correctedConc =
-                    if (d.name.equals("Adrenalin", true) || d.name.equals("Epinephrin", true) || d.name.equals("Epinephrine", true)) {
-                        // Falls versehentlich 0.1 mg/ml importiert wurde, setze standardmäßig 1.0 mg/ml
-                        if (f.concentrationMgPerMl != null && kotlin.math.abs(f.concentrationMgPerMl - 0.1) < 1e-9) 1.0 else f.concentrationMgPerMl
-                    } else f.concentrationMgPerMl
-
-                val key = "${f.route}|${correctedConc}|${f.label}"
+                val key = "${f.route}|${f.concentrationMgPerMl}|${f.label}"
                 val formId = stableId("form:${d.name}:$key")
                 formIdByKey[key] = formId
                 forms += FormulationEntity(
                     id = formId,
                     drugId = drugId,
                     route = f.route,
-                    concentrationMgPerMl = correctedConc,
-                    label = when {
-                        (d.name.equals("Adrenalin", true) || d.name.equals("Epinephrin", true) || d.name.equals("Epinephrine", true)) &&
-                                correctedConc != null && kotlin.math.abs(correctedConc - 1.0) < 1e-9 ->
-                            if (f.label.isNullOrBlank()) "1 mg/mL (1:1000)" else f.label
-                        else -> f.label
-                    }
+                    concentrationMgPerMl = f.concentrationMgPerMl,
+                    label = f.label
                 )
             }
 
-            // Dosisregeln
+            // Dosisregeln (direkt aus JSON übernehmen)
             d.doseRules.forEach { r ->
                 val ucKey = if (r.useCaseCode.isNotBlank()) r.useCaseCode else d.useCases.firstOrNull()?.name.orEmpty()
                 val ucId = ucIdByCode[ucKey] ?: 0L
 
                 val formId: Long? = run {
                     val match = d.forms.firstOrNull { it.route.equals(r.route, ignoreCase = true) }
-                    match?.let { fm ->
-                        val conc = if (d.name.equals("Adrenalin", true) || d.name.equals("Epinephrin", true) || d.name.equals("Epinephrine", true)) {
-                            if (fm.concentrationMgPerMl != null && kotlin.math.abs(fm.concentrationMgPerMl - 0.1) < 1e-9) 1.0 else fm.concentrationMgPerMl
-                        } else fm.concentrationMgPerMl
-                        formIdByKey["${fm.route}|${conc}|${fm.label}"]
-                    }
+                    match?.let { fm -> formIdByKey["${fm.route}|${fm.concentrationMgPerMl}|${fm.label}"] }
                 }
 
                 rules += DoseRuleEntity(
@@ -130,12 +116,13 @@ object MedsSeeder {
                     mgPerKg = r.mgPerKg,
                     flatMg = r.flatMg,
                     maxSingleMg = r.maxSingleMg,
-                    roundingMl = r.roundingMl ?: 0.1, // Default beibehalten
+                    roundingMl = r.roundingMl ?: 0.1,
                     displayHint = r.displayHint ?: "",
                     ageMinMonths = r.ageMinMonths,
                     ageMaxMonths = r.ageMaxMonths,
                     weightMinKg = r.weightMinKg,
-                    weightMaxKg = r.weightMaxKg
+                    weightMaxKg = r.weightMaxKg,
+                    dilutionFactor = null // wird ggf. per Patch gesetzt
                 )
             }
         }
@@ -147,18 +134,29 @@ object MedsSeeder {
         db.doseRuleDao().upsertAll(rules)
     }
 
-    /** Hotfixes, die auf bestehende Daten angewendet werden. */
-    private fun applyHotfixes(db: AppDatabase) {
-        val sql = """
+    /**
+     * Daten-Patches nach Import:
+     * 1) Adrenalin-Standardampulle sicherstellen: 1 mg/mL (1:1000)
+     * 2) Reanimation: **dilutionFactor=10** (1:10) für alle Adrenalin-Regeln dieses Use-Cases
+     */
+    private fun applyDataPatches(db: AppDatabase) {
+        val sqlFixAdrenalineConc = """
             UPDATE formulation
                SET concentrationMgPerMl = 1.0,
                    label = CASE WHEN label IS NULL OR TRIM(label) = '' THEN '1 mg/mL (1:1000)' ELSE label END
-             WHERE drugId IN (
-                 SELECT id FROM drug WHERE lower(name) IN ('adrenalin','epinephrin','epinephrine')
-             )
+             WHERE drugId IN (SELECT id FROM drug WHERE lower(name) IN ('adrenalin','epinephrin','epinephrine'))
                AND (concentrationMgPerMl = 0.1 OR ABS(concentrationMgPerMl - 0.1) < 1e-6);
         """.trimIndent()
-        db.openHelper.writableDatabase.execSQL(sql)
+
+        val sqlSetReanimationDilution = """
+            UPDATE dose_rule
+               SET dilutionFactor = 10.0
+             WHERE drugId IN (SELECT id FROM drug WHERE lower(name) IN ('adrenalin','epinephrin','epinephrine'))
+               AND useCaseId IN (SELECT id FROM use_case WHERE lower(name) = 'reanimation');
+        """.trimIndent()
+
+        db.openHelper.writableDatabase.execSQL(sqlFixAdrenalineConc)
+        db.openHelper.writableDatabase.execSQL(sqlSetReanimationDilution)
     }
 
     /** stabiler, positiver Long aus String */
