@@ -11,12 +11,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Seeder für assets/meds.json – abgestimmt auf deine aktuellen Entities/DAOs.
- * Erwartet die camelCase-Importmodelle aus MedsJsonImporter.kt (MedsData, DrugJson, …).
+ * Seeder/Importer für assets/meds.json – inkl. Hotfix für Adrenalin-Konzentration.
  */
 object MedsSeeder {
 
-    /** Immer vollständig ersetzen (Entwicklungsmodus). */
+    /** Ersetzt den kompletten Inhalt (Entwicklungsmodus). */
     suspend fun seedFromAssetsReplaceAll(context: Context) = withContext(Dispatchers.IO) {
         val db = AppDatabase.get(context)
         val src: MedsData = MedsJsonImporter.load(context)
@@ -26,10 +25,11 @@ object MedsSeeder {
             db.useCaseDao().deleteAll()
             db.drugDao().deleteAll()
             insertAllFromJson(db, src)
+            applyHotfixes(db) // wichtig: Adrenalin 1 mg/ml
         }
     }
 
-    /** Nur initial füllen, wenn noch leer. */
+    /** Füllt nur initial; bestehende Daten bleiben erhalten. */
     suspend fun seedFromAssetsIfEmpty(context: Context) = withContext(Dispatchers.IO) {
         val db = AppDatabase.get(context)
         val hasAny: Boolean = db.openHelper.readableDatabase
@@ -42,6 +42,8 @@ object MedsSeeder {
                 insertAllFromJson(db, src)
             }
         }
+        // Hotfix immer ausführen (wirkt auch bei bereits befüllter DB)
+        applyHotfixes(db)
     }
 
     // --------------------------------------------------------
@@ -64,7 +66,7 @@ object MedsSeeder {
                 notes = d.notes
             )
 
-            // Use-Cases (UseCaseEntity hat kein "code" → nur name/priority)
+            // Use-Cases
             val ucIdByCode = mutableMapOf<String, Long>()
             d.useCases.forEachIndexed { idx, uc ->
                 val key = if (uc.code.isNotBlank()) uc.code else uc.name
@@ -78,18 +80,29 @@ object MedsSeeder {
                 )
             }
 
-            // Formulierungen → Schlüssel über Route+Konz.+Label
+            // Formulierungen (mit sanfter Korrektur bekannt fehlerhafter Werte)
             val formIdByKey = mutableMapOf<String, Long>()
             d.forms.forEach { f ->
-                val key = "${f.route}|${f.concentrationMgPerMl}|${f.label}"
+                val correctedConc =
+                    if (d.name.equals("Adrenalin", true) || d.name.equals("Epinephrin", true) || d.name.equals("Epinephrine", true)) {
+                        // Falls versehentlich 0.1 mg/ml importiert wurde, setze standardmäßig 1.0 mg/ml
+                        if (f.concentrationMgPerMl != null && kotlin.math.abs(f.concentrationMgPerMl - 0.1) < 1e-9) 1.0 else f.concentrationMgPerMl
+                    } else f.concentrationMgPerMl
+
+                val key = "${f.route}|${correctedConc}|${f.label}"
                 val formId = stableId("form:${d.name}:$key")
                 formIdByKey[key] = formId
                 forms += FormulationEntity(
                     id = formId,
                     drugId = drugId,
                     route = f.route,
-                    concentrationMgPerMl = f.concentrationMgPerMl,
-                    label = f.label
+                    concentrationMgPerMl = correctedConc,
+                    label = when {
+                        (d.name.equals("Adrenalin", true) || d.name.equals("Epinephrin", true) || d.name.equals("Epinephrine", true)) &&
+                                correctedConc != null && kotlin.math.abs(correctedConc - 1.0) < 1e-9 ->
+                            if (f.label.isNullOrBlank()) "1 mg/mL (1:1000)" else f.label
+                        else -> f.label
+                    }
                 )
             }
 
@@ -98,22 +111,26 @@ object MedsSeeder {
                 val ucKey = if (r.useCaseCode.isNotBlank()) r.useCaseCode else d.useCases.firstOrNull()?.name.orEmpty()
                 val ucId = ucIdByCode[ucKey] ?: 0L
 
-                // versuche anhand Route eine passende Formulierung zu finden
                 val formId: Long? = run {
                     val match = d.forms.firstOrNull { it.route.equals(r.route, ignoreCase = true) }
-                    match?.let { fm -> formIdByKey["${fm.route}|${fm.concentrationMgPerMl}|${fm.label}"] }
+                    match?.let { fm ->
+                        val conc = if (d.name.equals("Adrenalin", true) || d.name.equals("Epinephrin", true) || d.name.equals("Epinephrine", true)) {
+                            if (fm.concentrationMgPerMl != null && kotlin.math.abs(fm.concentrationMgPerMl - 0.1) < 1e-9) 1.0 else fm.concentrationMgPerMl
+                        } else fm.concentrationMgPerMl
+                        formIdByKey["${fm.route}|${conc}|${fm.label}"]
+                    }
                 }
 
                 rules += DoseRuleEntity(
                     id = stableId("rule:${d.name}:${r.useCaseCode}:${r.route}:${r.mode}:${r.flatMg}:${r.mgPerKg}"),
                     drugId = drugId,
                     useCaseId = ucId,
-                    formulationId = formId,               // darf null sein
+                    formulationId = formId,
                     mode = r.mode,
-                    mgPerKg = r.mgPerKg,                   // nullable ok
-                    flatMg = r.flatMg,                     // nullable ok
-                    maxSingleMg = r.maxSingleMg,           // nullable ok
-                    roundingMl = r.roundingMl ?: 0.1,      // FIX: Double? -> Double
+                    mgPerKg = r.mgPerKg,
+                    flatMg = r.flatMg,
+                    maxSingleMg = r.maxSingleMg,
+                    roundingMl = r.roundingMl ?: 0.1, // Default beibehalten
                     displayHint = r.displayHint ?: "",
                     ageMinMonths = r.ageMinMonths,
                     ageMaxMonths = r.ageMaxMonths,
@@ -130,7 +147,21 @@ object MedsSeeder {
         db.doseRuleDao().upsertAll(rules)
     }
 
-    /** stabiler, positiver Long aus einem String */
+    /** Hotfixes, die auf bestehende Daten angewendet werden. */
+    private fun applyHotfixes(db: AppDatabase) {
+        val sql = """
+            UPDATE formulation
+               SET concentrationMgPerMl = 1.0,
+                   label = CASE WHEN label IS NULL OR TRIM(label) = '' THEN '1 mg/mL (1:1000)' ELSE label END
+             WHERE drugId IN (
+                 SELECT id FROM drug WHERE lower(name) IN ('adrenalin','epinephrin','epinephrine')
+             )
+               AND (concentrationMgPerMl = 0.1 OR ABS(concentrationMgPerMl - 0.1) < 1e-6);
+        """.trimIndent()
+        db.openHelper.writableDatabase.execSQL(sql)
+    }
+
+    /** stabiler, positiver Long aus String */
     private fun stableId(seed: String): Long {
         var h = 1125899906842597L
         for (c in seed) h = 31L * h + c.code
