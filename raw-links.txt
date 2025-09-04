@@ -4,6 +4,8 @@ https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/build.gr
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/proguard-rules.pro
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/schemas/com.example.rdinfo.data.local.AppDatabase/2.json
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/schemas/com.example.rdinfo.data.local.AppDatabase/3.json
+https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/schemas/com.example.rdinfo.data.local.AppDatabase/4.json
+https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/schemas/com.example.rdinfo.data.local.AppDatabase/5.json
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/androidTest/java/com/example/rdinfo/ExampleInstrumentedTest.kt
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/main/AndroidManifest.xml
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/main/assets/meds.json
@@ -28,6 +30,7 @@ https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/main
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/main/java/com/example/rdinfo/ui/sections/EinsatzDoseCallSnippet.kt
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/main/java/com/example/rdinfo/ui/sections/EinsatzDoseSection.kt
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/main/java/com/example/rdinfo/ui/sections/EinsatzDoseSectionHost.kt
+https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/main/java/com/example/rdinfo/ui/theme/CalcCard.kt
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/main/java/com/example/rdinfo/ui/theme/Color.kt
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/main/java/com/example/rdinfo/ui/theme/EinsatzScreen.kt
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/main/java/com/example/rdinfo/ui/theme/InfoScreen.kt

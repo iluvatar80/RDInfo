@@ -1,4 +1,4 @@
-// File: app/src/main/java/com/example/rdinfo/ui/theme/CalcCard.kt
+// File: src/main/java/com/example/rdinfo/ui/theme/CalcCard.kt
 package com.example.rdinfo.ui.theme
 
 import androidx.compose.foundation.layout.Column
@@ -16,11 +16,6 @@ import com.example.rdinfo.data.local.DoseRuleEntity
 import com.example.rdinfo.data.local.FormulationEntity
 import com.example.rdinfo.domain.CalcFacade
 
-/**
- * Zeigt die Box "Berechnung" auf Basis der datengetriebenen Pipeline (DoseMath/CalcFacade).
- * – nutzt manuelle Ampullen-Konz. (falls gesetzt), sonst die der Formulierung
- * – berücksichtigt Rule.dilutionFactor (z. B. 10 für Reanimation 1:10)
- */
 @Composable
 fun CalcCard(
     appliedRule: DoseRuleEntity?,
@@ -57,12 +52,6 @@ fun CalcCard(
             if (ui.cappedByMax) {
                 Spacer(Modifier.height(6.dp))
                 Text("Maximaldosis angewandt", color = MaterialTheme.colorScheme.error)
-            }
-
-            val hint = appliedRule.displayHint
-            if (!hint.isNullOrBlank()) {
-                Spacer(Modifier.height(8.dp))
-                Text(hint, style = MaterialTheme.typography.bodySmall)
             }
         }
     }

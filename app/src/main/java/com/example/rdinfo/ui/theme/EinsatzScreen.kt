@@ -14,8 +14,9 @@ import com.example.rdinfo.data.local.FormulationEntity
 import com.example.rdinfo.ui.theme.CalcCard
 
 /**
- * Einsatz-Screen, der die Berechnungsbox über CalcCard rendert.
- * Keine Hardcodes – Logik über DoseMath/CalcFacade; Daten (inkl. Verdünnung) kommen aus der DB.
+ * Einsatz-Screen mit datengetriebener Berechnungsbox (CalcCard).
+ * Keine Medikament-Hardcodes: Verdünnungen/Konzentrationen kommen über Datenbank
+ * (Formulierung + ggf. dilutionFactor in der Regel) und werden in CalcCard/DoseMath verarbeitet.
  */
 @Composable
 fun EinsatzScreen(
@@ -34,10 +35,10 @@ fun EinsatzScreen(
                 .fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Optional: bestehende Eingabe-UI
+            // Optional: vorhandene Eingabe-UI oberhalb einhängen
             contentTop?.invoke()
 
-            // Berechnungs-Box
+            // Berechnungs-Box (rechnet automatisch mit 1:10 bei Reanimation, wenn in Daten hinterlegt)
             CalcCard(
                 appliedRule = appliedRule,
                 selectedFormulation = selectedFormulation,

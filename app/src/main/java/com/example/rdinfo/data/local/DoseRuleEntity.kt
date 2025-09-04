@@ -1,4 +1,4 @@
-// File: app/src/main/java/com/example/rdinfo/data/local/DoseRuleEntity.kt
+// File: src/main/java/com/example/rdinfo/data/local/DoseRuleEntity.kt
 package com.example.rdinfo.data.local
 
 import androidx.room.ColumnInfo

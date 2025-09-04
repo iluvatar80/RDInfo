@@ -29,8 +29,24 @@ object DoseMath {
         rule: DoseRuleEntity
     ): Double? {
         val base = overrideConcMgPerMl ?: stockConcMgPerMl ?: return null
-        val factor = rule.dilutionFactor
-        return if (factor != null && factor > 0.0) base / factor else base
+
+        // 1) Expliziter Verdünnungsfaktor aus der Datenbank
+        val explicit = rule.dilutionFactor
+        if (explicit != null && explicit > 0.0) return base / explicit
+
+        // 2) Fallback (datengetrieben): Erkenne "1:10" im displayHint der Regel
+        val hint = rule.displayHint
+        if (hint != null && containsOneToTen(hint)) return base / 10.0
+
+        // 3) Keine Verdünnung
+        return base
+    }
+
+    private fun containsOneToTen(text: String): Boolean {
+        val compact = buildString {
+            for (c in text) if (!c.isWhitespace()) append(c)
+        }.lowercase()
+        return ":" in compact && "1:10" in compact
     }
 
     private fun roundToStep(value: Double, step: Double): Double {
