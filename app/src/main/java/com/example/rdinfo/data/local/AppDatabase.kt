@@ -1,3 +1,4 @@
+// File: app/src/main/java/com/example/rdinfo/data/local/AppDatabase.kt
 package com.example.rdinfo.data.local
 
 import android.content.Context
@@ -10,10 +11,9 @@ import androidx.room.RoomDatabase
         DrugEntity::class,
         UseCaseEntity::class,
         FormulationEntity::class,
-        DoseRuleEntity::class,
-        InfoEntity::class
+        DoseRuleEntity::class
     ],
-    version = 3, // bumped to trigger migration
+    version = 4, // Schema geändert -> Version erhöht
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -21,7 +21,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun useCaseDao(): UseCaseDao
     abstract fun formulationDao(): FormulationDao
     abstract fun doseRuleDao(): DoseRuleDao
-    abstract fun infoDao(): InfoDao
 
     companion object {
         @Volatile
@@ -33,7 +32,7 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 "rdinfo.db"
             )
-                // In Entwicklung: löscht DB automatisch bei Schemaänderung statt zu crashen.
+                // Verhindert den hier gezeigten Crash bei Schema-Änderungen
                 .fallbackToDestructiveMigration()
                 .build()
             INSTANCE = instance

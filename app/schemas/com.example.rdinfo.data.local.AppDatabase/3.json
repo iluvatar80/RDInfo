@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 3,
-    "identityHash": "55561bab24de6e4c3b361a3d28d1957a",
+    "identityHash": "1340c39f5a139da91edb858692c6d3c3",
     "entities": [
       {
         "tableName": "drug",
@@ -226,7 +226,7 @@
       },
       {
         "tableName": "dose_rule",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `drugId` INTEGER NOT NULL, `useCaseId` INTEGER, `formulationId` INTEGER, `mode` TEXT NOT NULL, `mgPerKg` REAL, `ugPerKg` REAL, `flatMg` REAL, `ageMinMonths` INTEGER, `ageMaxMonths` INTEGER, `weightMinKg` REAL, `weightMaxKg` REAL, `maxSingleMg` REAL, `maxDailyMg` REAL, `roundingMl` REAL NOT NULL, `displayHint` TEXT, `updatedAt` INTEGER NOT NULL)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `drugId` INTEGER NOT NULL, `useCaseId` INTEGER NOT NULL, `formulationId` INTEGER, `mode` TEXT NOT NULL, `mgPerKg` REAL, `flatMg` REAL, `maxSingleMg` REAL, `roundingMl` REAL NOT NULL DEFAULT 0.1, `displayHint` TEXT NOT NULL DEFAULT '', `ageMinMonths` INTEGER, `ageMaxMonths` INTEGER, `weightMinKg` REAL, `weightMaxKg` REAL, `dilutionFactor` REAL DEFAULT NULL, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -244,7 +244,7 @@
             "fieldPath": "useCaseId",
             "columnName": "useCaseId",
             "affinity": "INTEGER",
-            "notNull": false
+            "notNull": true
           },
           {
             "fieldPath": "formulationId",
@@ -265,16 +265,30 @@
             "notNull": false
           },
           {
-            "fieldPath": "ugPerKg",
-            "columnName": "ugPerKg",
-            "affinity": "REAL",
-            "notNull": false
-          },
-          {
             "fieldPath": "flatMg",
             "columnName": "flatMg",
             "affinity": "REAL",
             "notNull": false
+          },
+          {
+            "fieldPath": "maxSingleMg",
+            "columnName": "maxSingleMg",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "roundingMl",
+            "columnName": "roundingMl",
+            "affinity": "REAL",
+            "notNull": true,
+            "defaultValue": "0.1"
+          },
+          {
+            "fieldPath": "displayHint",
+            "columnName": "displayHint",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
           },
           {
             "fieldPath": "ageMinMonths",
@@ -301,82 +315,20 @@
             "notNull": false
           },
           {
-            "fieldPath": "maxSingleMg",
-            "columnName": "maxSingleMg",
+            "fieldPath": "dilutionFactor",
+            "columnName": "dilutionFactor",
             "affinity": "REAL",
-            "notNull": false
-          },
-          {
-            "fieldPath": "maxDailyMg",
-            "columnName": "maxDailyMg",
-            "affinity": "REAL",
-            "notNull": false
-          },
-          {
-            "fieldPath": "roundingMl",
-            "columnName": "roundingMl",
-            "affinity": "REAL",
-            "notNull": true
-          },
-          {
-            "fieldPath": "displayHint",
-            "columnName": "displayHint",
-            "affinity": "TEXT",
-            "notNull": false
-          },
-          {
-            "fieldPath": "updatedAt",
-            "columnName": "updatedAt",
-            "affinity": "INTEGER",
-            "notNull": true
+            "notNull": false,
+            "defaultValue": "NULL"
           }
         ],
         "primaryKey": {
-          "autoGenerate": true,
+          "autoGenerate": false,
           "columnNames": [
             "id"
           ]
         },
-        "indices": [
-          {
-            "name": "index_dose_rule_drugId",
-            "unique": false,
-            "columnNames": [
-              "drugId"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_dose_rule_drugId` ON `${TABLE_NAME}` (`drugId`)"
-          },
-          {
-            "name": "index_dose_rule_useCaseId",
-            "unique": false,
-            "columnNames": [
-              "useCaseId"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_dose_rule_useCaseId` ON `${TABLE_NAME}` (`useCaseId`)"
-          },
-          {
-            "name": "index_dose_rule_formulationId",
-            "unique": false,
-            "columnNames": [
-              "formulationId"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_dose_rule_formulationId` ON `${TABLE_NAME}` (`formulationId`)"
-          },
-          {
-            "name": "index_dose_rule_drugId_useCaseId_formulationId",
-            "unique": false,
-            "columnNames": [
-              "drugId",
-              "useCaseId",
-              "formulationId"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_dose_rule_drugId_useCaseId_formulationId` ON `${TABLE_NAME}` (`drugId`, `useCaseId`, `formulationId`)"
-          }
-        ],
+        "indices": [],
         "foreignKeys": []
       },
       {
@@ -421,7 +373,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '55561bab24de6e4c3b361a3d28d1957a')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '1340c39f5a139da91edb858692c6d3c3')"
     ]
   }
 }
