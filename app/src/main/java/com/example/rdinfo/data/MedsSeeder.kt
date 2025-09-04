@@ -20,13 +20,11 @@ object MedsSeeder {
     suspend fun seedFromAssetsReplaceAll(context: Context) = withContext(Dispatchers.IO) {
         val db = AppDatabase.get(context)
         val src: MedsData = MedsJsonImporter.load(context)
-
         db.withTransaction {
             db.doseRuleDao().deleteAll()
             db.formulationDao().deleteAll()
             db.useCaseDao().deleteAll()
             db.drugDao().deleteAll()
-
             insertAllFromJson(db, src)
         }
     }
@@ -37,13 +35,17 @@ object MedsSeeder {
         val hasAny: Boolean = db.openHelper.readableDatabase
             .query("SELECT 1 FROM drug LIMIT 1")
             .use { c -> c.moveToFirst() }
+
         if (!hasAny) {
             val src: MedsData = MedsJsonImporter.load(context)
-            db.withTransaction { insertAllFromJson(db, src) }
+            db.withTransaction {
+                insertAllFromJson(db, src)
+            }
         }
     }
 
     // --------------------------------------------------------
+
     private suspend fun insertAllFromJson(db: AppDatabase, src: MedsData) {
         val drugs = mutableListOf<DrugEntity>()
         val useCases = mutableListOf<UseCaseEntity>()
@@ -52,7 +54,6 @@ object MedsSeeder {
 
         src.drugs.forEach { d ->
             val drugId = stableId("drug:${d.name}")
-
             drugs += DrugEntity(
                 id = drugId,
                 name = d.name,
@@ -63,7 +64,7 @@ object MedsSeeder {
                 notes = d.notes
             )
 
-            // Use-Cases (deine UseCaseEntity hat KEIN 'code'-Feld → wir speichern nur name, priority)
+            // Use-Cases (UseCaseEntity hat kein "code" → nur name/priority)
             val ucIdByCode = mutableMapOf<String, Long>()
             d.useCases.forEachIndexed { idx, uc ->
                 val key = if (uc.code.isNotBlank()) uc.code else uc.name
@@ -107,12 +108,12 @@ object MedsSeeder {
                     id = stableId("rule:${d.name}:${r.useCaseCode}:${r.route}:${r.mode}:${r.flatMg}:${r.mgPerKg}"),
                     drugId = drugId,
                     useCaseId = ucId,
-                    formulationId = formId, // darf null sein
+                    formulationId = formId,               // darf null sein
                     mode = r.mode,
-                    mgPerKg = r.mgPerKg,
-                    flatMg = r.flatMg,
-                    maxSingleMg = r.maxSingleMg,
-                    roundingMl = r.roundingMl,
+                    mgPerKg = r.mgPerKg,                   // nullable ok
+                    flatMg = r.flatMg,                     // nullable ok
+                    maxSingleMg = r.maxSingleMg,           // nullable ok
+                    roundingMl = r.roundingMl ?: 0.1,      // FIX: Double? -> Double
                     displayHint = r.displayHint ?: "",
                     ageMinMonths = r.ageMinMonths,
                     ageMaxMonths = r.ageMaxMonths,
