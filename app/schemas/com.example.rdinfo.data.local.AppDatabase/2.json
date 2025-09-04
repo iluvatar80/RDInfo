@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 2,
-    "identityHash": "4a11173f625324b1485de436f0b72276",
+    "identityHash": "55561bab24de6e4c3b361a3d28d1957a",
     "entities": [
       {
         "tableName": "info",
@@ -264,7 +264,7 @@
       },
       {
         "tableName": "dose_rule",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `drugId` INTEGER NOT NULL, `useCaseId` INTEGER, `formulationId` INTEGER, `mode` TEXT NOT NULL, `mgPerKg` REAL, `ugPerKg` REAL, `flatMg` REAL, `ageMinMonths` INTEGER, `ageMaxMonths` INTEGER, `weightMinKg` REAL, `weightMaxKg` REAL, `maxSingleMg` REAL, `maxDailyMg` REAL, `roundingMl` REAL, `displayHint` TEXT, `updatedAt` INTEGER NOT NULL)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `drugId` INTEGER NOT NULL, `useCaseId` INTEGER, `formulationId` INTEGER, `mode` TEXT NOT NULL, `mgPerKg` REAL, `ugPerKg` REAL, `flatMg` REAL, `ageMinMonths` INTEGER, `ageMaxMonths` INTEGER, `weightMinKg` REAL, `weightMaxKg` REAL, `maxSingleMg` REAL, `maxDailyMg` REAL, `roundingMl` REAL NOT NULL, `displayHint` TEXT, `updatedAt` INTEGER NOT NULL)",
         "fields": [
           {
             "fieldPath": "id",
@@ -354,7 +354,7 @@
             "fieldPath": "roundingMl",
             "columnName": "roundingMl",
             "affinity": "REAL",
-            "notNull": false
+            "notNull": true
           },
           {
             "fieldPath": "displayHint",
@@ -402,6 +402,17 @@
             ],
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_dose_rule_formulationId` ON `${TABLE_NAME}` (`formulationId`)"
+          },
+          {
+            "name": "index_dose_rule_drugId_useCaseId_formulationId",
+            "unique": false,
+            "columnNames": [
+              "drugId",
+              "useCaseId",
+              "formulationId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_dose_rule_drugId_useCaseId_formulationId` ON `${TABLE_NAME}` (`drugId`, `useCaseId`, `formulationId`)"
           }
         ],
         "foreignKeys": []
@@ -410,7 +421,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '4a11173f625324b1485de436f0b72276')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '55561bab24de6e4c3b361a3d28d1957a')"
     ]
   }
 }
