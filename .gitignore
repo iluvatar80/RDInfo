@@ -1,0 +1,11 @@
+# Android / Gradle
+.gradle/
+.idea/
+**/build/
+local.properties
+*.iml
+
+# Signatur/Secrets
+*.jks
+*.keystore
+app/google-services.json
