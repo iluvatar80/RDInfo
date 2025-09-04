@@ -3,6 +3,7 @@ https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/.gitigno
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/build.gradle.kts
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/proguard-rules.pro
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/schemas/com.example.rdinfo.data.local.AppDatabase/2.json
+https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/schemas/com.example.rdinfo.data.local.AppDatabase/3.json
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/androidTest/java/com/example/rdinfo/ExampleInstrumentedTest.kt
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/main/AndroidManifest.xml
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/main/assets/meds.json
@@ -21,6 +22,12 @@ https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/main
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/main/java/com/example/rdinfo/data/local/InfoEntity.kt
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/main/java/com/example/rdinfo/data/local/UseCaseDao.kt
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/main/java/com/example/rdinfo/data/local/UseCaseEntity.kt
+https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/main/java/com/example/rdinfo/domain/CalcFacade.kt
+https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/main/java/com/example/rdinfo/domain/DoseMath.kt
+https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/main/java/com/example/rdinfo/ui/components/DoseSummary.kt
+https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/main/java/com/example/rdinfo/ui/sections/EinsatzDoseCallSnippet.kt
+https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/main/java/com/example/rdinfo/ui/sections/EinsatzDoseSection.kt
+https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/main/java/com/example/rdinfo/ui/sections/EinsatzDoseSectionHost.kt
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/main/java/com/example/rdinfo/ui/theme/Color.kt
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/main/java/com/example/rdinfo/ui/theme/EinsatzScreen.kt
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/app/src/main/java/com/example/rdinfo/ui/theme/InfoScreen.kt
@@ -54,5 +61,5 @@ https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/gradle/wrapp
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/gradle/wrapper/gradle-wrapper.properties
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/gradlew
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/gradlew.bat
-https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/liste.txt
+https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/raw-links.txt
 https://raw.githubusercontent.com/iluvatar80/RDInfo/refs/heads/main/settings.gradle.kts

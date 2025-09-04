@@ -11,9 +11,10 @@ import androidx.room.RoomDatabase
         DrugEntity::class,
         UseCaseEntity::class,
         FormulationEntity::class,
-        DoseRuleEntity::class
+        DoseRuleEntity::class,
+        InfoEntity::class
     ],
-    version = 4, // Schema geändert -> Version erhöht
+    version = 5, // Schema geändert -> Version erhöht
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -21,6 +22,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun useCaseDao(): UseCaseDao
     abstract fun formulationDao(): FormulationDao
     abstract fun doseRuleDao(): DoseRuleDao
+    abstract fun infoDao(): InfoDao
 
     companion object {
         @Volatile
@@ -32,7 +34,7 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 "rdinfo.db"
             )
-                // Verhindert den hier gezeigten Crash bei Schema-Änderungen
+                // Verhindert Room-Crashs bei Schema-Änderungen in der Entwicklung
                 .fallbackToDestructiveMigration()
                 .build()
             INSTANCE = instance
