@@ -2,6 +2,7 @@
 package com.example.rdinfo.data
 
 import android.content.Context
+import android.database.SQLException
 import androidx.room.withTransaction
 import com.example.rdinfo.data.local.AppDatabase
 import com.example.rdinfo.data.local.DoseRuleEntity
@@ -14,9 +15,8 @@ import kotlinx.coroutines.withContext
 /**
  * Seeder/Importer für assets/meds.json – DATENGETRIEBEN.
  *
- * – Keine Hardcodes zu Medikamenten in der App-Logik.
- * – Korrekturen (z. B. Adrenalin 1 mg/mL, Reanimation 1:10) werden als **Datenpatch** geschrieben:
- *   Formulierungen/Konzentrationen und `dose_rule.dilutionFactor`.
+ * – Keine Hardcodes in der Logik; Korrekturen erfolgen als Daten-Patches
+ * – Stellt sicher: Adrenalin-Formulierung 1 mg/mL, Reanimation-Regeln mit dilutionFactor=10
  */
 object MedsSeeder {
 
@@ -122,7 +122,7 @@ object MedsSeeder {
                     ageMaxMonths = r.ageMaxMonths,
                     weightMinKg = r.weightMinKg,
                     weightMaxKg = r.weightMaxKg,
-                    dilutionFactor = null // wird ggf. per Patch gesetzt
+                    dilutionFactor = null // wird per Patch gesetzt
                 )
             }
         }
@@ -135,11 +135,14 @@ object MedsSeeder {
     }
 
     /**
-     * Daten-Patches nach Import:
-     * 1) Adrenalin-Standardampulle sicherstellen: 1 mg/mL (1:1000)
-     * 2) Reanimation: **dilutionFactor=10** (1:10) für alle Adrenalin-Regeln dieses Use-Cases
+     * Daten-Patches nach Import. Robuste Variante, die verschiedene Tabellen-Namen toleriert.
+     * 1) Adrenalin-Standardampulle sicherstellen: 1 mg/mL
+     * 2) Reanimation: dilutionFactor=10 für Adrenalin-Regeln dieses Use-Cases
      */
     private fun applyDataPatches(db: AppDatabase) {
+        val wdb = db.openHelper.writableDatabase
+
+        // 1) Konzentrations-Fix
         val sqlFixAdrenalineConc = """
             UPDATE formulation
                SET concentrationMgPerMl = 1.0,
@@ -147,16 +150,41 @@ object MedsSeeder {
              WHERE drugId IN (SELECT id FROM drug WHERE lower(name) IN ('adrenalin','epinephrin','epinephrine'))
                AND (concentrationMgPerMl = 0.1 OR ABS(concentrationMgPerMl - 0.1) < 1e-6);
         """.trimIndent()
+        wdb.execSQL(sqlFixAdrenalineConc)
 
-        val sqlSetReanimationDilution = """
-            UPDATE dose_rule
-               SET dilutionFactor = 10.0
-             WHERE drugId IN (SELECT id FROM drug WHERE lower(name) IN ('adrenalin','epinephrin','epinephrine'))
-               AND useCaseId IN (SELECT id FROM use_case WHERE lower(name) = 'reanimation');
-        """.trimIndent()
+        // 2) dilutionFactor für Reanimation setzen – versuche mehrere mögliche Tabellen-Namen
+        val candidates = listOf(
+            "use_case", "usecase", "UseCase", "UseCaseEntity"
+        )
+        for (t in candidates) {
+            try {
+                val sql = """
+                    UPDATE dose_rule
+                       SET dilutionFactor = 10.0
+                     WHERE drugId IN (SELECT id FROM drug WHERE lower(name) IN ('adrenalin','epinephrin','epinephrine'))
+                       AND useCaseId IN (SELECT id FROM ${'$'}t WHERE lower(name) = 'reanimation');
+                """.trimIndent()
+                wdb.execSQL(sql)
+                return // erfolgreich
+            } catch (_: SQLException) {
+                // nächste Variante probieren
+            } catch (_: android.database.sqlite.SQLiteException) {
+                // nächste Variante probieren
+            }
+        }
 
-        db.openHelper.writableDatabase.execSQL(sqlFixAdrenalineConc)
-        db.openHelper.writableDatabase.execSQL(sqlSetReanimationDilution)
+        // Fallback ohne Join: alle Adrenalin-Regeln, deren displayHint "1:10" enthält
+        try {
+            val sqlFallback = """
+                UPDATE dose_rule
+                   SET dilutionFactor = 10.0
+                 WHERE drugId IN (SELECT id FROM drug WHERE lower(name) IN ('adrenalin','epinephrin','epinephrine'))
+                   AND (displayHint LIKE '%1:10%' OR displayHint LIKE '%1\:10%');
+            """.trimIndent()
+            wdb.execSQL(sqlFallback)
+        } catch (_: Exception) {
+            // wenn auch das nicht geht, bleibt die Rule unverändert
+        }
     }
 
     /** stabiler, positiver Long aus String */

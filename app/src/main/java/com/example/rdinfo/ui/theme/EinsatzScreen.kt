@@ -5,22 +5,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.rdinfo.data.local.DoseRuleEntity
 import com.example.rdinfo.data.local.FormulationEntity
-import com.example.rdinfo.ui.sections.EinsatzDoseSectionHost
+import com.example.rdinfo.ui.theme.CalcCard
 
 /**
- * Minimaler, aber vollständiger Einsatz-Screen.
- *
- * - Keine medikamentspezifischen Hardcodes.
- * - Berechnung/Anzeige erfolgt über EinsatzDoseSectionHost → CalcFacade/DoseMath → DB-Regeln (inkl. dilutionFactor).
- * - Übergib deinen aktuellen Zustand als Parameter (Rule, Formulierung, manuelle Ampullenkonzentration, Gewicht).
+ * Einsatz-Screen, der die Berechnungsbox über CalcCard rendert.
+ * Keine Hardcodes – Logik über DoseMath/CalcFacade; Daten (inkl. Verdünnung) kommen aus der DB.
  */
 @Composable
 fun EinsatzScreen(
@@ -28,8 +23,8 @@ fun EinsatzScreen(
     selectedFormulation: FormulationEntity?,
     manualConcMgPerMl: Double?,
     weightKg: Double?,
-    contentTop: (@Composable () -> Unit)? = null,   // optional: deine vorhandenen Eingabefelder
-    contentBottom: (@Composable () -> Unit)? = null // optional: weitere Abschnitte (Tabs etc.)
+    contentTop: (@Composable () -> Unit)? = null,
+    contentBottom: (@Composable () -> Unit)? = null
 ) {
     Scaffold { inner ->
         Column(
@@ -39,17 +34,18 @@ fun EinsatzScreen(
                 .fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Optional: existierende UI-Teile oben/unten einhängen
+            // Optional: bestehende Eingabe-UI
             contentTop?.invoke()
 
-            Text("Berechnung", style = MaterialTheme.typography.titleMedium)
-            EinsatzDoseSectionHost(
+            // Berechnungs-Box
+            CalcCard(
                 appliedRule = appliedRule,
                 selectedFormulation = selectedFormulation,
                 manualConcMgPerMl = manualConcMgPerMl,
                 weightKg = weightKg
             )
 
+            // Optional: restliche Inhalte
             contentBottom?.invoke()
         }
     }
