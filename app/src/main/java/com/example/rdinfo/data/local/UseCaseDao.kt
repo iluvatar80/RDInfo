@@ -1,3 +1,4 @@
+// app/src/main/java/com/example/rdinfo/data/local/UseCaseDao.kt
 package com.example.rdinfo.data.local
 
 import androidx.room.Dao
@@ -7,7 +8,6 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface UseCaseDao {
-
     @Query("SELECT * FROM use_case WHERE drugId = :drugId ORDER BY priority, name")
     fun observeByDrug(drugId: Long): Flow<List<UseCaseEntity>>
 

@@ -22,4 +22,9 @@ interface FormulationDao {
 
     @Query("DELETE FROM formulation")
     suspend fun deleteAll()
+
+    // + in app/src/main/java/com/example/rdinfo/data/local/FormulationDao.kt
+    @Query("SELECT * FROM formulation WHERE id = :id LIMIT 1")
+    suspend fun getById(id: Long): FormulationEntity?
+
 }
