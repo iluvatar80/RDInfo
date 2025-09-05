@@ -1,357 +1,458 @@
+// Zielpfad: app/src/main/java/com/rdinfo/MainActivity.kt
+// Ganze Datei ersetzen (Dropdown unter Gewicht, gleiche Höhe wie Zahlenfeld; keine DB nötig)
+
 package com.rdinfo
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Divider
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ElevatedCard
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.PopupProperties
+import com.rdinfo.ui.theme.AppColors
 import com.rdinfo.ui.theme.RDInfoTheme
-import kotlin.math.roundToInt
-
-// Wunschfarbe für inaktive Sliderbereiche & Zierlinien (#E3B9BB)
-private val SoftPink = Color(0xFFE3B9BB)
+import com.rdinfo.ui.theme.Spacing
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            var darkMode by rememberSaveable { mutableStateOf(false) }
-            RDInfoTheme(darkTheme = darkMode) {
-                RDInfoApp(
-                    darkMode = darkMode,
-                    onDarkModeChange = { darkMode = it }
+            var isDark by rememberSaveable { mutableStateOf(false) }
+            var currentScreen by rememberSaveable { mutableStateOf(Screen.MAIN) }
+
+            RDInfoTheme(darkTheme = isDark) {
+                Surface(color = MaterialTheme.colorScheme.background) {
+                    when (currentScreen) {
+                        Screen.MAIN -> MainScreen(
+                            onOpenSettings = { currentScreen = Screen.SETTINGS }
+                        )
+                        Screen.SETTINGS -> SettingsScreen(
+                            isDark = isDark,
+                            onBack = { currentScreen = Screen.MAIN },
+                            onToggleDark = { isDark = it }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+enum class Screen { MAIN, SETTINGS }
+
+@Composable
+private fun MainScreen(onOpenSettings: () -> Unit) {
+    Column(Modifier.fillMaxSize().padding(horizontal = Spacing.lg)) {
+        Spacer(Modifier.height(Spacing.sm))
+        HeaderRow(
+            onMedicationsClick = { /* TODO */ },
+            onMenuClick = onOpenSettings
+        )
+        HorizontalDivider(color = AppColors.SoftPink, thickness = 1.dp)
+        Spacer(Modifier.height(Spacing.sm))
+
+        // Alters-Slider
+        var years by rememberSaveable { mutableStateOf(0) }
+        LabeledCompactSlider("Jahre", years, 0..100) { years = it }
+        Spacer(Modifier.height(Spacing.sm))
+
+        var months by rememberSaveable { mutableStateOf(0) }
+        LabeledCompactSlider("Monate", months, 0..11) { months = it }
+
+        Spacer(Modifier.height(Spacing.lg))
+
+        // Gewicht + Schätzung
+        Text("Gewicht (kg)", style = MaterialTheme.typography.titleSmall)
+        Spacer(Modifier.height(Spacing.xs))
+        var weightText by rememberSaveable { mutableStateOf("") }
+        CompactNumberField(
+            value = weightText,
+            onValueChange = { t ->
+                if (t.matches(Regex("^[0-9]*[.,]?[0-9]{0,2}$"))) weightText = t
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        val estimated = remember(years, months) { estimateWeightKg(years, months) }
+        val manualWeight = parseWeightKg(weightText)
+        val effectiveWeight = manualWeight ?: estimated
+
+        Spacer(Modifier.height(Spacing.xs))
+        Text(
+            "Vorschlag: ${formatKg(estimated)} kg",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Spacer(Modifier.height(Spacing.sm))
+
+        // Medikamenten-Dropdown (gleiche Höhe wie Zahlenfeld)
+        Text("Medikament", style = MaterialTheme.typography.titleSmall)
+        Spacer(Modifier.height(Spacing.xs))
+        val medications = remember {
+            listOf(
+                "Adrenalin",
+                "Amiodaron",
+                "Atropin"
+            )
+        }
+        var selectedMedication by rememberSaveable { mutableStateOf(medications.first()) }
+        CompactDropdownField(
+            selectedText = selectedMedication,
+            options = medications,
+            onSelect = { selectedMedication = it },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(Modifier.height(Spacing.lg))
+
+        // Ergebnis (Platzhalter) – verwendet später effectiveWeight + selectedMedication
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(Spacing.lg)) {
+                Text("Berechnung", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(Spacing.sm))
+                Text(
+                    "Gewicht für Berechnung: ${formatKg(effectiveWeight)} kg | Medikament: $selectedMedication",
+                    style = MaterialTheme.typography.bodyLarge
                 )
             }
         }
     }
 }
 
-private enum class Screen { MAIN, SETTINGS }
+@Composable
+private fun CompactNumberField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = MaterialTheme.shapes.small
+    val borderColor = MaterialTheme.colorScheme.outline
+    val textStyle = MaterialTheme.typography.bodyLarge
+
+    Box(
+        modifier
+            .height(36.dp) // kompakt
+            .border(1.dp, borderColor, shape)
+            .clip(shape)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .then(modifier),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = textStyle.copy(color = MaterialTheme.colorScheme.onSurface),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
 
 @Composable
-fun RDInfoApp(
-    darkMode: Boolean,
-    onDarkModeChange: (Boolean) -> Unit
+private fun CompactDropdownField(
+    selectedText: String,
+    options: List<String>,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    var screen by rememberSaveable { mutableStateOf(Screen.MAIN) }
+    val shape = MaterialTheme.shapes.small
+    val borderColor = MaterialTheme.colorScheme.outline
+    var expanded by remember { mutableStateOf(false) }
+    var fieldWidthPx by remember { mutableStateOf(0) }
+    val fieldWidthDp = with(LocalDensity.current) { fieldWidthPx.toDp() }
 
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
+    Box(
+        modifier
+            .height(36.dp)
+            .border(1.dp, borderColor, shape)
+            .clip(shape)
+            .onSizeChanged { fieldWidthPx = it.width }
+            .then(modifier),
+        contentAlignment = Alignment.CenterStart
     ) {
-        Box(
+        Row(
             Modifier
                 .fillMaxSize()
-                .padding(WindowInsets.statusBars.asPaddingValues())
-        ) {
-            when (screen) {
-                Screen.MAIN -> MedicationInput(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp)
-                        .verticalScroll(rememberScrollState()),
-                    onOpenSettings = { screen = Screen.SETTINGS }
-                )
-                Screen.SETTINGS -> SettingsScreen(
-                    darkMode = darkMode,
-                    onDarkModeChange = onDarkModeChange,
-                    onBack = { screen = Screen.MAIN }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun SettingsScreen(
-    darkMode: Boolean,
-    onDarkModeChange: (Boolean) -> Unit,
-    onBack: () -> Unit
-) {
-    BackHandler { onBack() }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(WindowInsets.statusBars.asPaddingValues())
-            .padding(16.dp)
-    ) {
-        Text("Einstellungen", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(16.dp))
-
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Text("Dark Mode", style = MaterialTheme.typography.bodyLarge)
-            Spacer(Modifier.weight(1f))
-            Switch(checked = darkMode, onCheckedChange = onDarkModeChange)
-        }
-
-        Spacer(Modifier.height(12.dp))
-        TextButton(onClick = onBack) { Text("Zurück") }
-    }
-}
-
-/* ===================  Hauptscreen – Eingaben  =================== */
-
-@Composable
-fun MedicationInput(
-    modifier: Modifier = Modifier,
-    onOpenSettings: () -> Unit
-) {
-    var years by rememberSaveable { mutableIntStateOf(5) }   // 0..100
-    var months by rememberSaveable { mutableIntStateOf(0) }  // 0..11
-    var weightText by rememberSaveable { mutableStateOf("") } // kg
-    var menuOpen by remember { mutableStateOf(false) }
-
-    Column(modifier = modifier) {
-        Spacer(Modifier.height(8.dp)) // etwas mehr Luft nach oben
-
-        // OBERSTE ZEILE: Medikamente-Button (links) + 3-Punkte-Menü (rechts) in einer Flucht
-        Row(
+                .padding(horizontal = 12.dp)
+                .pointerInput(Unit) { detectTapGestures { expanded = true } },
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // „Medikamente“ – wieder pill/abgerundet wie zuvor
-            Button(
-                onClick = {},
-                shape = RoundedCornerShape(50),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ),
-                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp)
-            ) {
-                Text("Medikamente", style = MaterialTheme.typography.titleMedium)
-            }
-
-            Spacer(Modifier.weight(1f))
-
-            // Drei-Punkte-Menü rechts – in einer Linie mit dem Button
-            Box {
-                TextButton(
-                    onClick = { menuOpen = true },
-                    contentPadding = PaddingValues(8.dp)
-                ) {
-                    Text(
-                        "⋮",
-                        color = MaterialTheme.colorScheme.onSurface,
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                }
-                DropdownMenu(
-                    expanded = menuOpen,
-                    onDismissRequest = { menuOpen = false },
-                    properties = PopupProperties(focusable = true)
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("Settings") },
-                        onClick = {
-                            menuOpen = false
-                            onOpenSettings()
-                        }
-                    )
-                }
-            }
+            Text(selectedText, style = MaterialTheme.typography.bodyLarge)
+            DropdownChevron()
         }
 
-        // Zierlinie direkt unter der gesamten oberen Zeile
-        Spacer(Modifier.height(4.dp))
-        Divider(thickness = 1.dp, color = SoftPink)
-        Spacer(Modifier.height(12.dp))
-
-        LabeledIntCompactSlider(
-            label = "Jahre",
-            value = years,
-            range = 0..100, // erhöht auf 100
-            onChange = { years = it }
-        )
-
-        Spacer(Modifier.height(10.dp))
-
-        LabeledIntCompactSlider(
-            label = "Monate",
-            value = months,
-            range = 0..11,
-            onChange = { months = it }
-        )
-
-        // Gewicht näher an die Slider
-        Spacer(Modifier.height(4.dp))
-        OutlinedTextField(
-            value = weightText,
-            onValueChange = { s ->
-                weightText = s.filter { it.isDigit() || it == '.' || it == ',' }
-            },
-            label = { Text("Gewicht (kg)") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        // Berechnung näher nach oben
-        Spacer(Modifier.height(4.dp))
-        ElevatedCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Text("Berechnung", style = MaterialTheme.typography.titleMedium)
-                Text("Folgt im nächsten Schritt.", style = MaterialTheme.typography.bodyMedium)
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.width(fieldWidthDp)
+        ) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option) },
+                    onClick = {
+                        onSelect(option)
+                        expanded = false
+                    }
+                )
             }
         }
-        Spacer(Modifier.height(4.dp))
     }
 }
 
-/* ===================  Slider (kompakt & designgetreu) =================== */
+@Composable
+private fun DropdownChevron() {
+    Canvas(Modifier.size(16.dp)) {
+        val w = size.width; val h = size.height
+        val yTop = h * 0.4f; val yBottom = h * 0.6f
+        val midX = w / 2f
+        // Einfaches ▼ per zwei Linien
+        drawLine(
+            color = MaterialTheme.colorScheme.onSurface,
+            start = Offset(midX - w * 0.25f, yTop),
+            end = Offset(midX, yBottom),
+            strokeWidth = 2f
+        )
+        drawLine(
+            color = MaterialTheme.colorScheme.onSurface,
+            start = Offset(midX + w * 0.25f, yTop),
+            end = Offset(midX, yBottom),
+            strokeWidth = 2f
+        )
+    }
+}
+
+private fun parseWeightKg(text: String): Double? =
+    text.replace(',', '.').toDoubleOrNull()
+
+private fun formatKg(v: Double): String = String.format(Locale.GERMANY, "%.1f", v)
+
+/**
+ * Realistische Gewichtsschätzung:
+ *  - 0–12 Monate:  (0,5 × Monate) + 4
+ *  - 1–5 Jahre:   APLS (2×J + 8), monatsgenau linear
+ *  - 6–12 Jahre:  APLS (3×J + 7), monatsgenau linear
+ *  - >12 Jahre:   Platzhalter 70 kg
+ */
+private fun estimateWeightKg(years: Int, months: Int): Double {
+    val totalMonths = years * 12 + months
+    if (totalMonths <= 12) return 4.0 + 0.5 * totalMonths
+
+    fun aplsYearWeight(y: Int): Double = when (y) {
+        in 1..5 -> 2.0 * y + 8.0
+        in 6..12 -> 3.0 * y + 7.0
+        else -> 70.0
+    }
+
+    return when (years) {
+        in 1..11 -> {
+            val w0 = aplsYearWeight(years)
+            val w1 = aplsYearWeight(years + 1)
+            val frac = (months.coerceIn(0, 11)) / 12.0
+            w0 + (w1 - w0) * frac
+        }
+        12 -> aplsYearWeight(12)
+        else -> 70.0
+    }
+}
 
 @Composable
-fun LabeledIntCompactSlider(
+private fun HeaderRow(
+    onMedicationsClick: () -> Unit,
+    onMenuClick: () -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = Spacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Button(
+            onClick = onMedicationsClick,
+            shape = CircleShape,
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+        ) { Text("Medikamente") }
+
+        IconButton(
+            onClick = onMenuClick,
+            modifier = Modifier.semantics {
+                contentDescription = "Mehr Optionen"
+                stateDescription = "Öffnet Einstellungen"
+            }
+        ) { MoreVertIcon() }
+    }
+}
+
+@Composable
+private fun LabeledCompactSlider(
     label: String,
     value: Int,
     range: IntRange,
-    onChange: (Int) -> Unit
+    onValueChange: (Int) -> Unit
 ) {
-    Column(Modifier.fillMaxWidth()) {
-        // Label sehr nah am Slider
-        Text("$label: $value", style = MaterialTheme.typography.bodyLarge)
-        Spacer(Modifier.height(0.dp))
-        CompactSlider(value = value, range = range, onChange = onChange)
-        // Zierlinie direkt unter dem Slider
-        Spacer(Modifier.height(0.dp))
-        Divider(thickness = 1.dp, color = SoftPink)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("$label:", style = MaterialTheme.typography.bodyLarge)
+        Spacer(Modifier.width(Spacing.xs))
+        Text(value.toString(), style = MaterialTheme.typography.bodyLarge)
+    }
+    Spacer(Modifier.height(0.dp))
+    CompactSlider(
+        value = value,
+        onValueChange = onValueChange,
+        range = range
+    )
+    Spacer(Modifier.height(Spacing.xs))
+}
+
+@Composable
+private fun CompactSlider(
+    value: Int,
+    onValueChange: (Int) -> Unit,
+    range: IntRange,
+    modifier: Modifier = Modifier,
+    trackHeight: Dp = 14.dp,
+    activeColor: Color = MaterialTheme.colorScheme.primary,
+    inactiveColor: Color = AppColors.SoftPink
+) {
+    val density = LocalDensity.current
+    val trackHeightPx = with(density) { trackHeight.toPx() }
+    var widthPx by remember { mutableStateOf(0f) }
+
+    val min = range.first
+    val max = range.last
+    val span = (max - min).coerceAtLeast(1)
+
+    fun xFromValue(v: Int): Float {
+        val clamped = v.coerceIn(min, max)
+        val frac = (clamped - min).toFloat() / span
+        return frac * widthPx
+    }
+
+    fun valueFromX(x: Float): Int {
+        if (widthPx <= 0f) return value
+        val frac = (x / widthPx).coerceIn(0f, 1f)
+        return (min + frac * span).toInt()
+    }
+
+    val inactive = inactiveColor
+    val active = activeColor
+    val thumbColor = MaterialTheme.colorScheme.onPrimary
+
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(40.dp)
+            .onSizeChanged { size -> widthPx = size.width.toFloat() }
+            .pointerInput(range) {
+                // Tap-to-Set
+                detectTapGestures(onTap = { pos -> onValueChange(valueFromX(pos.x)) })
+            }
+            .pointerInput(range) {
+                // Drag
+                detectDragGestures(
+                    onDragStart = { o -> onValueChange(valueFromX(o.x)) },
+                    onDrag = { change, _ -> onValueChange(valueFromX(change.position.x)) },
+                )
+            }
+            .semantics { stateDescription = "$value" },
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Canvas(Modifier.fillMaxWidth().height(trackHeight)) {
+            val corner = CornerRadius(trackHeightPx / 2f, trackHeightPx / 2f)
+            val centerY = size.height / 2f
+            val top = centerY - trackHeightPx / 2f
+
+            drawRoundRect(
+                color = inactive,
+                topLeft = Offset(0f, top),
+                size = androidx.compose.ui.geometry.Size(size.width, trackHeightPx),
+                cornerRadius = corner
+            )
+
+            val thumbX = xFromValue(value)
+            val thumbRadius = trackHeightPx / 2f
+            val cx = thumbX.coerceIn(thumbRadius, size.width - thumbRadius)
+            drawRoundRect(
+                color = active,
+                topLeft = Offset(0f, top),
+                size = androidx.compose.ui.geometry.Size(cx.coerceAtLeast(0f), trackHeightPx),
+                cornerRadius = corner
+            )
+
+            drawCircle(
+                color = thumbColor,
+                radius = thumbRadius,
+                center = Offset(cx, centerY)
+            )
+        }
     }
 }
 
 @Composable
-fun CompactSlider(
-    value: Int,
-    range: IntRange,
-    onChange: (Int) -> Unit,
-    modifier: Modifier = Modifier
-        .fillMaxWidth()
-        .height(40.dp) // Gesamtraum
+private fun MoreVertIcon(
+    modifier: Modifier = Modifier,
+    dotSize: Dp = 3.dp,
+    gap: Dp = 3.dp
 ) {
-    // Inaktiv: #E3B9BB, Aktiv: Primär-Rot
-    val active = MaterialTheme.colorScheme.primary
-    val inactive = SoftPink
+    val dot = with(LocalDensity.current) { dotSize.toPx() }
+    val spacing = with(LocalDensity.current) { (dotSize + gap).toPx() }
+    val dotColor = MaterialTheme.colorScheme.onSurface
 
-    var widthPx by remember { mutableStateOf(1f) }
-
-    Box(
-        modifier = modifier
-            .onSizeChanged { widthPx = it.width.toFloat() }
-            .pointerInput(range) {
-                detectTapGestures { offset ->
-                    val ratio = (offset.x.coerceIn(0f, widthPx)) / widthPx
-                    val newVal = (range.first + (range.last - range.first) * ratio)
-                        .roundToInt()
-                        .coerceIn(range)
-                    onChange(newVal)
-                }
-            }
-            .pointerInput(range) {
-                detectDragGestures { change, _ ->
-                    val ratio = (change.position.x.coerceIn(0f, widthPx)) / widthPx
-                    val newVal = (range.first + (range.last - range.first) * ratio)
-                        .roundToInt()
-                        .coerceIn(range)
-                    onChange(newVal)
-                }
-            }
-    ) {
-        Canvas(Modifier.fillMaxSize()) {
-            // Track-Höhe – bestimmt auch die Thumb-Größe
-            val trackHeight = 14.dp.toPx()
-            val radius = trackHeight / 2
-            val centerY = size.height / 2
-
-            // Inaktiver Track (voll, #E3B9BB)
-            drawRoundRect(
-                color = inactive,
-                topLeft = Offset(0f, centerY - trackHeight / 2),
-                size = Size(size.width, trackHeight),
-                cornerRadius = CornerRadius(radius, radius)
+    Canvas(Modifier.size(24.dp).then(modifier)) {
+        val cx = size.width / 2f
+        val startY = size.height / 2f - spacing
+        repeat(3) { i ->
+            drawCircle(
+                color = dotColor,
+                radius = dot / 2f,
+                center = Offset(cx, startY + i * spacing)
             )
+        }
+    }
+}
 
-            // Aktiver Track (links vom Thumb, Rot)
-            val ratio = (value - range.first).toFloat() /
-                    (range.last - range.first).coerceAtLeast(1)
-            val activeWidth = size.width * ratio
-            drawRoundRect(
-                color = active,
-                topLeft = Offset(0f, centerY - trackHeight / 2),
-                size = Size(activeWidth, trackHeight),
-                cornerRadius = CornerRadius(radius, radius)
-            )
+@Composable
+private fun SettingsScreen(
+    isDark: Boolean,
+    onBack: () -> Unit,
+    onToggleDark: (Boolean) -> Unit
+) {
+    Column(Modifier.fillMaxSize().padding(Spacing.lg)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Einstellungen", style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onBack) { Text("Zurück") }
+        }
+        Spacer(Modifier.height(Spacing.lg))
 
-            // Thumb – QUADRATISCH (eckig), Seitenlänge = trackHeight
-            val thumbSide = trackHeight
-            val half = thumbSide / 2f
-            val thumbXCenter = activeWidth.coerceIn(half, size.width - half)
-            val topLeft = Offset(thumbXCenter - half, centerY - half)
-
-            // rotes Quadrat (eckig)
-            drawRect(
-                color = active,
-                topLeft = topLeft,
-                size = Size(thumbSide, thumbSide)
-            )
-
-            // weißer VERTIKALER Streifen – durchgehend & satt
-            val stripeStroke = trackHeight * 0.48f // breit
-            drawLine(
-                color = Color.White,
-                start = Offset(thumbXCenter, centerY - half),
-                end = Offset(thumbXCenter, centerY + half),
-                strokeWidth = stripeStroke,
-                cap = StrokeCap.Butt
-            )
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Dark‑Mode", style = MaterialTheme.typography.bodyLarge)
+            Spacer(Modifier.weight(1f))
+            Switch(checked = isDark, onCheckedChange = onToggleDark)
         }
     }
 }
