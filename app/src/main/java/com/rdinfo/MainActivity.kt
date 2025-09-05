@@ -1,5 +1,5 @@
 // Zielpfad: app/src/main/java/com/rdinfo/MainActivity.kt
-// Ganze Datei ersetzen (Dropdown unter Gewicht, gleiche Höhe wie Zahlenfeld; keine DB nötig)
+// Ganze Datei ersetzen (Slider + eingefärbte Eingabefelder auf #E6E0E9)
 
 package com.rdinfo
 
@@ -7,12 +7,16 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -29,12 +33,15 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.rdinfo.ui.theme.AppColors
 import com.rdinfo.ui.theme.RDInfoTheme
 import com.rdinfo.ui.theme.Spacing
 import java.util.Locale
+
+private val TintE6E0E9 = Color(0xFFE6E0E9)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -46,9 +53,7 @@ class MainActivity : ComponentActivity() {
             RDInfoTheme(darkTheme = isDark) {
                 Surface(color = MaterialTheme.colorScheme.background) {
                     when (currentScreen) {
-                        Screen.MAIN -> MainScreen(
-                            onOpenSettings = { currentScreen = Screen.SETTINGS }
-                        )
+                        Screen.MAIN -> MainScreen(onOpenSettings = { currentScreen = Screen.SETTINGS })
                         Screen.SETTINGS -> SettingsScreen(
                             isDark = isDark,
                             onBack = { currentScreen = Screen.MAIN },
@@ -63,14 +68,27 @@ class MainActivity : ComponentActivity() {
 
 enum class Screen { MAIN, SETTINGS }
 
+enum class InfoTab { INDIKATION, KONTRAIND, WIRKUNG, NEBENWIRKUNG }
+
+data class MedSectionTexts(
+    val indication: String,
+    val contraindication: String,
+    val effect: String,
+    val sideEffects: String
+)
+
 @Composable
 private fun MainScreen(onOpenSettings: () -> Unit) {
-    Column(Modifier.fillMaxSize().padding(horizontal = Spacing.lg)) {
+    val scroll = rememberScrollState()
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(scroll)
+            .padding(horizontal = Spacing.lg)
+    ) {
         Spacer(Modifier.height(Spacing.sm))
-        HeaderRow(
-            onMedicationsClick = { /* TODO */ },
-            onMenuClick = onOpenSettings
-        )
+        HeaderRow(onMedicationsClick = { /* TODO */ }, onMenuClick = onOpenSettings)
         HorizontalDivider(color = AppColors.SoftPink, thickness = 1.dp)
         Spacer(Modifier.height(Spacing.sm))
 
@@ -84,41 +102,35 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
 
         Spacer(Modifier.height(Spacing.lg))
 
-        // Gewicht + Schätzung
-        Text("Gewicht (kg)", style = MaterialTheme.typography.titleSmall)
+        // Gewicht + Schätzung (Label + Vorschlag über dem Feld)
+        val estimated = remember(years, months) { estimateWeightKg(years, months) }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Gewicht (kg)", style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.weight(1f))
+            Text(
+                "Vorschlag: ${formatKg(estimated)} kg",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
         Spacer(Modifier.height(Spacing.xs))
+
         var weightText by rememberSaveable { mutableStateOf("") }
         CompactNumberField(
             value = weightText,
-            onValueChange = { t ->
-                if (t.matches(Regex("^[0-9]*[.,]?[0-9]{0,2}$"))) weightText = t
-            },
+            onValueChange = { t -> if (t.matches(Regex("^[0-9]*[.,]?[0-9]{0,2}$"))) weightText = t },
             modifier = Modifier.fillMaxWidth()
         )
 
-        val estimated = remember(years, months) { estimateWeightKg(years, months) }
         val manualWeight = parseWeightKg(weightText)
         val effectiveWeight = manualWeight ?: estimated
 
-        Spacer(Modifier.height(Spacing.xs))
-        Text(
-            "Vorschlag: ${formatKg(estimated)} kg",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-
         Spacer(Modifier.height(Spacing.sm))
 
-        // Medikamenten-Dropdown (gleiche Höhe wie Zahlenfeld)
-        Text("Medikament", style = MaterialTheme.typography.titleSmall)
+        // Medikamenten-Dropdown
+        Text("Medikament", style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(Spacing.xs))
-        val medications = remember {
-            listOf(
-                "Adrenalin",
-                "Amiodaron",
-                "Atropin"
-            )
-        }
+        val medications = remember { listOf("Adrenalin", "Amiodaron", "Atropin") }
         var selectedMedication by rememberSaveable { mutableStateOf(medications.first()) }
         CompactDropdownField(
             selectedText = selectedMedication,
@@ -127,21 +139,226 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
             modifier = Modifier.fillMaxWidth()
         )
 
+        Spacer(Modifier.height(Spacing.sm))
+
+        // Einsatzfall-Dropdown
+        Text("Einsatzfall", style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(Spacing.xs))
+        val medicationUseCases = remember {
+            mapOf(
+                "Adrenalin" to listOf("Reanimation", "Anaphylaxie", "Schwellung der oberen Atemwege"),
+                "Amiodaron" to listOf("Reanimation"),
+                "Atropin" to listOf("Bradykardie")
+            )
+        }
+        val useCases = medicationUseCases[selectedMedication].orEmpty()
+        var selectedUseCase by rememberSaveable(selectedMedication) { mutableStateOf(useCases.firstOrNull() ?: "") }
+        CompactDropdownField(
+            selectedText = selectedUseCase.ifEmpty { "—" },
+            options = useCases,
+            onSelect = { selectedUseCase = it },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(Modifier.height(Spacing.sm))
+
+        // Ampullenkonzentration – umrahmt in farbiger Card (#E6E0E9)
+        var effectiveConc by rememberSaveable { mutableStateOf<Double?>(null) }
+        AmpouleConcentrationSection(
+            medication = selectedMedication,
+            onEffectiveConcentrationChanged = { effectiveConc = it }
+        )
+
         Spacer(Modifier.height(Spacing.lg))
 
-        // Ergebnis (Platzhalter) – verwendet später effectiveWeight + selectedMedication
+        // Ergebnis (Platzhalter)
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(Spacing.lg)) {
                 Text("Berechnung", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(Spacing.sm))
                 Text(
-                    "Gewicht für Berechnung: ${formatKg(effectiveWeight)} kg | Medikament: $selectedMedication",
+                    "Gewicht: ${formatKg(effectiveWeight)} kg\nMedikament: $selectedMedication\nEinsatzfall: ${selectedUseCase.ifEmpty { "–" }}\nKonzentration: ${effectiveConc?.let { format2(it) + " mg/ml" } ?: "—"}",
                     style = MaterialTheme.typography.bodyLarge
+                )
+            }
+        }
+
+        Spacer(Modifier.height(Spacing.sm))
+
+        // --- Info‑Buttons + Bereich ---
+        val medTexts = remember {
+            mapOf(
+                "Adrenalin" to MedSectionTexts(
+                    indication = "Reanimation; Anaphylaxie; Schwellung der oberen Atemwege",
+                    contraindication = "Bei vitaler Indikation keine absoluten Kontraindikationen.",
+                    effect = "α/β‑Sympathomimetikum: Vasokonstriktion, Bronchodilatation, Steigerung Herzzeitvolumen.",
+                    sideEffects = "Tachykardie, Arrhythmien, Tremor, Hypertonie."
+                ),
+                "Amiodaron" to MedSectionTexts("—", "—", "—", "—"),
+                "Atropin" to MedSectionTexts("—", "—", "—", "—")
+            )
+        }
+        var activeTab by rememberSaveable { mutableStateOf(InfoTab.INDIKATION) }
+
+        InfoTabsRow(activeTab = activeTab, onChange = { activeTab = it })
+        Spacer(Modifier.height(Spacing.xs))
+        val txt = when (activeTab) {
+            InfoTab.INDIKATION -> medTexts[selectedMedication]?.indication
+            InfoTab.KONTRAIND -> medTexts[selectedMedication]?.contraindication
+            InfoTab.WIRKUNG -> medTexts[selectedMedication]?.effect
+            InfoTab.NEBENWIRKUNG -> medTexts[selectedMedication]?.sideEffects
+        } ?: "—"
+        Surface(
+            tonalElevation = 2.dp,
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                txt,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.padding(Spacing.lg)
+            )
+        }
+
+        Spacer(Modifier.height(Spacing.lg))
+    }
+}
+
+// Zielpfad: app/src/main/java/com/rdinfo/MainActivity.kt
+// Ersetze NUR die Funktion `InfoTabsRow(...)` durch den folgenden Code:
+
+@Composable
+private fun InfoTabsRow(activeTab: InfoTab, onChange: (InfoTab) -> Unit) {
+    val shape = RoundedCornerShape(20.dp)
+    val buttonHeight = 36.dp
+    val labelStyle = MaterialTheme.typography.bodySmall
+
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        val items = listOf(
+            InfoTab.INDIKATION to ("Indikation" to 0.9f),
+            InfoTab.KONTRAIND to ("Kontraindikation" to 1.6f),
+            InfoTab.WIRKUNG to ("Wirkung" to 0.9f),
+            InfoTab.NEBENWIRKUNG to ("Nebenwirkung" to 1.2f)
+        )
+        items.forEach { (tab, pair) ->
+            val (label, weight) = pair
+            val selected = tab == activeTab
+            val colors = if (selected) {
+                ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
+            } else {
+                ButtonDefaults.buttonColors(
+                    containerColor = Color.Transparent,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            OutlinedButton(
+                onClick = { onChange(tab) },
+                shape = shape,
+                colors = colors,
+                border = if (selected) null else ButtonDefaults.outlinedButtonBorder,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                modifier = Modifier
+                    .weight(weight)
+                    .height(buttonHeight)
+            ) {
+                Text(
+                    label,
+                    style = labelStyle,
+                    maxLines = 1,
+                    softWrap = false,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         }
     }
 }
+
+
+@Composable
+private fun AmpouleConcentrationSection(
+    medication: String,
+    onEffectiveConcentrationChanged: (Double?) -> Unit
+) {
+    // Default-Texte und -Werte pro Medikament
+    val defaultConcTextMap = remember {
+        mapOf(
+            "Adrenalin" to "1 Ampulle (1 ml) = 1 mg"
+        )
+    }
+    val defaultConcValueMap = remember {
+        mapOf(
+            "Adrenalin" to 1.0 // mg/ml
+        )
+    }
+
+    var manual by rememberSaveable(medication) { mutableStateOf(false) }
+    var mgText by rememberSaveable(medication) { mutableStateOf("") }
+    var mlText by rememberSaveable(medication) { mutableStateOf("") }
+
+    val defaultText = defaultConcTextMap[medication] ?: "—"
+    val defaultValue = defaultConcValueMap[medication]
+
+    // Wenn nicht manuell, melde Default an den Caller
+    LaunchedEffect(medication, manual) {
+        if (!manual) onEffectiveConcentrationChanged(defaultValue)
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = TintE6E0E9),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Column(Modifier.padding(Spacing.lg)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Ampullenkonzentration", style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.weight(1f))
+                Text("Manuell", style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.width(8.dp))
+                Switch(checked = manual, onCheckedChange = { manual = it })
+            }
+            Spacer(Modifier.height(Spacing.xs))
+
+            if (!manual) {
+                Text(
+                    defaultText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            } else {
+                Row(verticalAlignment = Alignment.Top) {
+                    Column(Modifier.width(96.dp)) {
+                        Text("mg", style = MaterialTheme.typography.bodySmall)
+                        Spacer(Modifier.height(Spacing.xs))
+                        CompactNumberField(
+                            value = mgText,
+                            onValueChange = { t -> if (t.matches(Regex("^[0-9]{0,3}([.,][0-9]{0,2})?$"))) mgText = t }
+                        )
+                    }
+                    Spacer(Modifier.width(Spacing.sm))
+                    Column(Modifier.width(96.dp)) {
+                        Text("ml", style = MaterialTheme.typography.bodySmall)
+                        Spacer(Modifier.height(Spacing.xs))
+                        CompactNumberField(
+                            value = mlText,
+                            onValueChange = { t -> if (t.matches(Regex("^[0-9]{0,3}([.,][0-9]{0,2})?$"))) mlText = t }
+                        )
+                    }
+                }
+                val mg = mgText.replace(',', '.').toDoubleOrNull()
+                val ml = mlText.replace(',', '.').toDoubleOrNull()
+                val conc = if (mg != null && ml != null && ml > 0.0) mg / ml else null
+                LaunchedEffect(mgText, mlText) { onEffectiveConcentrationChanged(conc) }
+            }
+        }
+    }
+}
+
+// ---- Hilfsfelder / -funktionen ----
 
 @Composable
 private fun CompactNumberField(
@@ -155,9 +372,10 @@ private fun CompactNumberField(
 
     Box(
         modifier
-            .height(36.dp) // kompakt
+            .height(36.dp)
             .border(1.dp, borderColor, shape)
             .clip(shape)
+            .background(TintE6E0E9)
             .padding(horizontal = 12.dp, vertical = 6.dp)
             .then(modifier),
         contentAlignment = Alignment.CenterStart
@@ -191,6 +409,7 @@ private fun CompactDropdownField(
             .height(36.dp)
             .border(1.dp, borderColor, shape)
             .clip(shape)
+            .background(TintE6E0E9)
             .onSizeChanged { fieldWidthPx = it.width }
             .then(modifier),
         contentAlignment = Alignment.CenterStart
@@ -214,7 +433,7 @@ private fun CompactDropdownField(
         ) {
             options.forEach { option ->
                 DropdownMenuItem(
-                    text = { Text(option) },
+                    text = { Text(option, style = MaterialTheme.typography.bodyLarge) },
                     onClick = {
                         onSelect(option)
                         expanded = false
@@ -227,38 +446,21 @@ private fun CompactDropdownField(
 
 @Composable
 private fun DropdownChevron() {
+    val chevronColor = MaterialTheme.colorScheme.onSurface
     Canvas(Modifier.size(16.dp)) {
         val w = size.width; val h = size.height
         val yTop = h * 0.4f; val yBottom = h * 0.6f
         val midX = w / 2f
-        // Einfaches ▼ per zwei Linien
-        drawLine(
-            color = MaterialTheme.colorScheme.onSurface,
-            start = Offset(midX - w * 0.25f, yTop),
-            end = Offset(midX, yBottom),
-            strokeWidth = 2f
-        )
-        drawLine(
-            color = MaterialTheme.colorScheme.onSurface,
-            start = Offset(midX + w * 0.25f, yTop),
-            end = Offset(midX, yBottom),
-            strokeWidth = 2f
-        )
+        drawLine(color = chevronColor, start = Offset(midX - w * 0.25f, yTop), end = Offset(midX, yBottom), strokeWidth = 2f)
+        drawLine(color = chevronColor, start = Offset(midX + w * 0.25f, yTop), end = Offset(midX, yBottom), strokeWidth = 2f)
     }
 }
 
-private fun parseWeightKg(text: String): Double? =
-    text.replace(',', '.').toDoubleOrNull()
-
+private fun parseWeightKg(text: String): Double? = text.replace(',', '.').toDoubleOrNull()
 private fun formatKg(v: Double): String = String.format(Locale.GERMANY, "%.1f", v)
+private fun format2(v: Double): String = String.format(Locale.GERMANY, "%.2f", v)
 
-/**
- * Realistische Gewichtsschätzung:
- *  - 0–12 Monate:  (0,5 × Monate) + 4
- *  - 1–5 Jahre:   APLS (2×J + 8), monatsgenau linear
- *  - 6–12 Jahre:  APLS (3×J + 7), monatsgenau linear
- *  - >12 Jahre:   Platzhalter 70 kg
- */
+/** Gewichtsschätzung (APLS‑basiert + monatsgenau) */
 private fun estimateWeightKg(years: Int, months: Int): Double {
     val totalMonths = years * 12 + months
     if (totalMonths <= 12) return 4.0 + 0.5 * totalMonths
@@ -282,10 +484,7 @@ private fun estimateWeightKg(years: Int, months: Int): Double {
 }
 
 @Composable
-private fun HeaderRow(
-    onMedicationsClick: () -> Unit,
-    onMenuClick: () -> Unit
-) {
+private fun HeaderRow(onMedicationsClick: () -> Unit, onMenuClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().padding(vertical = Spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
@@ -315,16 +514,12 @@ private fun LabeledCompactSlider(
     onValueChange: (Int) -> Unit
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("$label:", style = MaterialTheme.typography.bodyLarge)
+        Text("$label:", style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.width(Spacing.xs))
-        Text(value.toString(), style = MaterialTheme.typography.bodyLarge)
+        Text(value.toString(), style = MaterialTheme.typography.bodySmall)
     }
     Spacer(Modifier.height(0.dp))
-    CompactSlider(
-        value = value,
-        onValueChange = onValueChange,
-        range = range
-    )
+    CompactSlider(value = value, onValueChange = onValueChange, range = range)
     Spacer(Modifier.height(Spacing.xs))
 }
 
@@ -335,8 +530,8 @@ private fun CompactSlider(
     range: IntRange,
     modifier: Modifier = Modifier,
     trackHeight: Dp = 14.dp,
-    activeColor: Color = MaterialTheme.colorScheme.primary,
-    inactiveColor: Color = AppColors.SoftPink
+    activeColor: Color = TintE6E0E9,
+    inactiveColor: Color = TintE6E0E9
 ) {
     val density = LocalDensity.current
     val trackHeightPx = with(density) { trackHeight.toPx() }
@@ -367,12 +562,8 @@ private fun CompactSlider(
             .fillMaxWidth()
             .height(40.dp)
             .onSizeChanged { size -> widthPx = size.width.toFloat() }
+            .pointerInput(range) { detectTapGestures(onTap = { pos -> onValueChange(valueFromX(pos.x)) }) }
             .pointerInput(range) {
-                // Tap-to-Set
-                detectTapGestures(onTap = { pos -> onValueChange(valueFromX(pos.x)) })
-            }
-            .pointerInput(range) {
-                // Drag
                 detectDragGestures(
                     onDragStart = { o -> onValueChange(valueFromX(o.x)) },
                     onDrag = { change, _ -> onValueChange(valueFromX(change.position.x)) },
@@ -382,31 +573,46 @@ private fun CompactSlider(
         contentAlignment = Alignment.CenterStart
     ) {
         Canvas(Modifier.fillMaxWidth().height(trackHeight)) {
-            val corner = CornerRadius(trackHeightPx / 2f, trackHeightPx / 2f)
+            val trackCorner = CornerRadius(trackHeightPx / 2f, trackHeightPx / 2f)
             val centerY = size.height / 2f
             val top = centerY - trackHeightPx / 2f
 
+            // Track
             drawRoundRect(
                 color = inactive,
                 topLeft = Offset(0f, top),
                 size = androidx.compose.ui.geometry.Size(size.width, trackHeightPx),
-                cornerRadius = corner
+                cornerRadius = trackCorner
             )
 
-            val thumbX = xFromValue(value)
-            val thumbRadius = trackHeightPx / 2f
-            val cx = thumbX.coerceIn(thumbRadius, size.width - thumbRadius)
+            // Aktiver Track (gleiche Farbe, um den Thumb im Fokus zu halten)
+            val thumbCenterX = xFromValue(value)
+            val thumbSize = trackHeightPx // quadratisch
+            val half = thumbSize / 2f
+            val clampedCx = thumbCenterX.coerceIn(half, size.width - half)
             drawRoundRect(
                 color = active,
                 topLeft = Offset(0f, top),
-                size = androidx.compose.ui.geometry.Size(cx.coerceAtLeast(0f), trackHeightPx),
-                cornerRadius = corner
+                size = androidx.compose.ui.geometry.Size(clampedCx.coerceAtLeast(0f), trackHeightPx),
+                cornerRadius = trackCorner
             )
 
-            drawCircle(
+            // Thumb als "rounded square"
+            val thumbCorner = CornerRadius(trackHeightPx * 0.25f, trackHeightPx * 0.25f)
+            val left = clampedCx - half
+            drawRoundRect(
                 color = thumbColor,
-                radius = thumbRadius,
-                center = Offset(cx, centerY)
+                topLeft = Offset(left, top),
+                size = androidx.compose.ui.geometry.Size(thumbSize, thumbSize),
+                cornerRadius = thumbCorner
+            )
+            // Weißer vertikaler Streifen
+            val stripeX = left + thumbSize / 2f
+            drawLine(
+                color = Color.White,
+                start = Offset(stripeX, top + 2f),
+                end = Offset(stripeX, top + thumbSize - 2f),
+                strokeWidth = 2f
             )
         }
     }
@@ -426,11 +632,7 @@ private fun MoreVertIcon(
         val cx = size.width / 2f
         val startY = size.height / 2f - spacing
         repeat(3) { i ->
-            drawCircle(
-                color = dotColor,
-                radius = dot / 2f,
-                center = Offset(cx, startY + i * spacing)
-            )
+            drawCircle(color = dotColor, radius = dot / 2f, center = Offset(cx, startY + i * spacing))
         }
     }
 }
