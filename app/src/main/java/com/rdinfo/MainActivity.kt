@@ -1,5 +1,5 @@
 // Zielpfad: app/src/main/java/com/rdinfo/MainActivity.kt
-// Ganze Datei ersetzen (Slider + eingefärbte Eingabefelder auf #E6E0E9)
+// Ganze Datei – Berechnung ausgelagert nach logic/DosingCalculator.kt
 
 package com.rdinfo
 
@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
@@ -36,6 +37,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.rdinfo.data.MedicationInfoSections
+import com.rdinfo.data.MedicationRepository
+import com.rdinfo.logic.computeDoseFor
+import com.rdinfo.logic.computeVolumeMl
 import com.rdinfo.ui.theme.AppColors
 import com.rdinfo.ui.theme.RDInfoTheme
 import com.rdinfo.ui.theme.Spacing
@@ -70,13 +75,6 @@ enum class Screen { MAIN, SETTINGS }
 
 enum class InfoTab { INDIKATION, KONTRAIND, WIRKUNG, NEBENWIRKUNG }
 
-data class MedSectionTexts(
-    val indication: String,
-    val contraindication: String,
-    val effect: String,
-    val sideEffects: String
-)
-
 @Composable
 private fun MainScreen(onOpenSettings: () -> Unit) {
     val scroll = rememberScrollState()
@@ -92,7 +90,7 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
         HorizontalDivider(color = AppColors.SoftPink, thickness = 1.dp)
         Spacer(Modifier.height(Spacing.sm))
 
-        // Alters-Slider
+        // --- Alter ---
         var years by rememberSaveable { mutableStateOf(0) }
         LabeledCompactSlider("Jahre", years, 0..100) { years = it }
         Spacer(Modifier.height(Spacing.sm))
@@ -102,7 +100,7 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
 
         Spacer(Modifier.height(Spacing.lg))
 
-        // Gewicht + Schätzung (Label + Vorschlag über dem Feld)
+        // --- Gewicht ---
         val estimated = remember(years, months) { estimateWeightKg(years, months) }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Gewicht (kg)", style = MaterialTheme.typography.bodySmall)
@@ -127,10 +125,10 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
 
         Spacer(Modifier.height(Spacing.sm))
 
-        // Medikamenten-Dropdown
+        // --- Medikament ---
         Text("Medikament", style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(Spacing.xs))
-        val medications = remember { listOf("Adrenalin", "Amiodaron", "Atropin") }
+        val medications = remember { MedicationRepository.getMedicationNames() }
         var selectedMedication by rememberSaveable { mutableStateOf(medications.first()) }
         CompactDropdownField(
             selectedText = selectedMedication,
@@ -141,17 +139,12 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
 
         Spacer(Modifier.height(Spacing.sm))
 
-        // Einsatzfall-Dropdown
+        // --- Einsatzfall (abhängig von Medikament) ---
         Text("Einsatzfall", style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(Spacing.xs))
-        val medicationUseCases = remember {
-            mapOf(
-                "Adrenalin" to listOf("Reanimation", "Anaphylaxie", "Schwellung der oberen Atemwege"),
-                "Amiodaron" to listOf("Reanimation"),
-                "Atropin" to listOf("Bradykardie")
-            )
+        val useCases = remember(selectedMedication) {
+            MedicationRepository.getUseCaseNamesForMedication(selectedMedication)
         }
-        val useCases = medicationUseCases[selectedMedication].orEmpty()
         var selectedUseCase by rememberSaveable(selectedMedication) { mutableStateOf(useCases.firstOrNull() ?: "") }
         CompactDropdownField(
             selectedText = selectedUseCase.ifEmpty { "—" },
@@ -162,7 +155,7 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
 
         Spacer(Modifier.height(Spacing.sm))
 
-        // Ampullenkonzentration – umrahmt in farbiger Card (#E6E0E9)
+        // --- Ampullenkonzentration (Card, nutzt Repository) ---
         var effectiveConc by rememberSaveable { mutableStateOf<Double?>(null) }
         AmpouleConcentrationSection(
             medication = selectedMedication,
@@ -171,61 +164,82 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
 
         Spacer(Modifier.height(Spacing.lg))
 
-        // Ergebnis (Platzhalter)
+        // --- Ergebnis (Dosierung/Volumen + Hinweis) ---
+        val dosing = remember(selectedMedication, selectedUseCase, effectiveWeight) {
+            computeDoseFor(selectedMedication, selectedUseCase, effectiveWeight)
+        }
+        val volumeMl = remember(dosing.mg, effectiveConc) { computeVolumeMl(dosing.mg, effectiveConc) }
+
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(Spacing.lg)) {
                 Text("Berechnung", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(Spacing.sm))
-                Text(
-                    "Gewicht: ${formatKg(effectiveWeight)} kg\nMedikament: $selectedMedication\nEinsatzfall: ${selectedUseCase.ifEmpty { "–" }}\nKonzentration: ${effectiveConc?.let { format2(it) + " mg/ml" } ?: "—"}",
-                    style = MaterialTheme.typography.bodyLarge
+
+                LabelValueBlock(
+                    rows = listOf(
+                        "Dosierung" to (dosing.mg?.let { "${format2(it)} mg" } ?: "—"),
+                        "Volumen" to (volumeMl?.let { "${format2(it)} ml" } ?: "—")
+                    )
                 )
+
+                Spacer(Modifier.height(Spacing.sm))
+                HorizontalDivider()
+                Spacer(Modifier.height(Spacing.sm))
+                Text("Hinweis", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(4.dp))
+                Text(dosing.hint, style = MaterialTheme.typography.bodyLarge)
             }
         }
 
         Spacer(Modifier.height(Spacing.sm))
 
-        // --- Info‑Buttons + Bereich ---
-        val medTexts = remember {
-            mapOf(
-                "Adrenalin" to MedSectionTexts(
-                    indication = "Reanimation; Anaphylaxie; Schwellung der oberen Atemwege",
-                    contraindication = "Bei vitaler Indikation keine absoluten Kontraindikationen.",
-                    effect = "α/β‑Sympathomimetikum: Vasokonstriktion, Bronchodilatation, Steigerung Herzzeitvolumen.",
-                    sideEffects = "Tachykardie, Arrhythmien, Tremor, Hypertonie."
-                ),
-                "Amiodaron" to MedSectionTexts("—", "—", "—", "—"),
-                "Atropin" to MedSectionTexts("—", "—", "—", "—")
-            )
-        }
+        // --- Info‑Buttons + Text (liest aus Repository) ---
         var activeTab by rememberSaveable { mutableStateOf(InfoTab.INDIKATION) }
-
         InfoTabsRow(activeTab = activeTab, onChange = { activeTab = it })
         Spacer(Modifier.height(Spacing.xs))
-        val txt = when (activeTab) {
-            InfoTab.INDIKATION -> medTexts[selectedMedication]?.indication
-            InfoTab.KONTRAIND -> medTexts[selectedMedication]?.contraindication
-            InfoTab.WIRKUNG -> medTexts[selectedMedication]?.effect
-            InfoTab.NEBENWIRKUNG -> medTexts[selectedMedication]?.sideEffects
+
+        val sections: MedicationInfoSections? = remember(selectedMedication) {
+            MedicationRepository.getInfoSections(selectedMedication)
+        }
+        val infoText = when (activeTab) {
+            InfoTab.INDIKATION -> sections?.indication
+            InfoTab.KONTRAIND -> sections?.contraindication
+            InfoTab.WIRKUNG -> sections?.effect
+            InfoTab.NEBENWIRKUNG -> sections?.sideEffects
         } ?: "—"
+
         Surface(
             tonalElevation = 2.dp,
             shape = MaterialTheme.shapes.medium,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text(
-                txt,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.padding(Spacing.lg)
-            )
+            Text(infoText, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(Spacing.lg))
         }
 
         Spacer(Modifier.height(Spacing.lg))
     }
 }
 
-// Zielpfad: app/src/main/java/com/rdinfo/MainActivity.kt
-// Ersetze NUR die Funktion `InfoTabsRow(...)` durch den folgenden Code:
+@Composable
+private fun LabelValueBlock(rows: List<Pair<String, String>>) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        // Labels-Spalte: nimmt automatisch die Breite des längsten Labels an
+        Column(modifier = Modifier.width(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
+            rows.forEachIndexed { index, (label, _) ->
+                Text("$label:", style = MaterialTheme.typography.bodyLarge)
+                if (index != rows.lastIndex) Spacer(Modifier.height(4.dp))
+            }
+        }
+        Spacer(Modifier.width(8.dp))
+        // Werte-Spalte: fängt bei gleicher X-Position an -> Ziffern bündig untereinander
+        Column(modifier = Modifier.weight(1f)) {
+            rows.forEachIndexed { index, (_, value) ->
+                Text(value, style = MaterialTheme.typography.bodyLarge)
+                if (index != rows.lastIndex) Spacer(Modifier.height(4.dp))
+            }
+        }
+    }
+}
 
 @Composable
 private fun InfoTabsRow(activeTab: InfoTab, onChange: (InfoTab) -> Unit) {
@@ -278,30 +292,19 @@ private fun InfoTabsRow(activeTab: InfoTab, onChange: (InfoTab) -> Unit) {
     }
 }
 
-
 @Composable
 private fun AmpouleConcentrationSection(
     medication: String,
     onEffectiveConcentrationChanged: (Double?) -> Unit
 ) {
-    // Default-Texte und -Werte pro Medikament
-    val defaultConcTextMap = remember {
-        mapOf(
-            "Adrenalin" to "1 Ampulle (1 ml) = 1 mg"
-        )
-    }
-    val defaultConcValueMap = remember {
-        mapOf(
-            "Adrenalin" to 1.0 // mg/ml
-        )
-    }
+    // Daten aus Repository lesen
+    val med = remember(medication) { MedicationRepository.getMedicationByName(medication) }
+    val defaultText = med?.defaultConcentration?.display ?: "—"
+    val defaultValue = med?.defaultConcentration?.mgPerMl
 
     var manual by rememberSaveable(medication) { mutableStateOf(false) }
     var mgText by rememberSaveable(medication) { mutableStateOf("") }
     var mlText by rememberSaveable(medication) { mutableStateOf("") }
-
-    val defaultText = defaultConcTextMap[medication] ?: "—"
-    val defaultValue = defaultConcValueMap[medication]
 
     // Wenn nicht manuell, melde Default an den Caller
     LaunchedEffect(medication, manual) {
@@ -358,7 +361,7 @@ private fun AmpouleConcentrationSection(
     }
 }
 
-// ---- Hilfsfelder / -funktionen ----
+// ---- Eingabe-/UI‑Hilfen ----
 
 @Composable
 private fun CompactNumberField(
@@ -581,39 +584,33 @@ private fun CompactSlider(
             drawRoundRect(
                 color = inactive,
                 topLeft = Offset(0f, top),
-                size = androidx.compose.ui.geometry.Size(size.width, trackHeightPx),
+                size = Size(size.width, trackHeightPx),
                 cornerRadius = trackCorner
             )
 
-            // Aktiver Track (gleiche Farbe, um den Thumb im Fokus zu halten)
+            // Aktiver Track (gleiche Farbe)
             val thumbCenterX = xFromValue(value)
-            val thumbSize = trackHeightPx // quadratisch
+            val thumbSize = trackHeightPx
             val half = thumbSize / 2f
             val clampedCx = thumbCenterX.coerceIn(half, size.width - half)
             drawRoundRect(
                 color = active,
                 topLeft = Offset(0f, top),
-                size = androidx.compose.ui.geometry.Size(clampedCx.coerceAtLeast(0f), trackHeightPx),
+                size = Size(clampedCx.coerceAtLeast(0f), trackHeightPx),
                 cornerRadius = trackCorner
             )
 
-            // Thumb als "rounded square"
+            // Thumb
             val thumbCorner = CornerRadius(trackHeightPx * 0.25f, trackHeightPx * 0.25f)
             val left = clampedCx - half
             drawRoundRect(
                 color = thumbColor,
                 topLeft = Offset(left, top),
-                size = androidx.compose.ui.geometry.Size(thumbSize, thumbSize),
+                size = Size(thumbSize, thumbSize),
                 cornerRadius = thumbCorner
             )
-            // Weißer vertikaler Streifen
             val stripeX = left + thumbSize / 2f
-            drawLine(
-                color = Color.White,
-                start = Offset(stripeX, top + 2f),
-                end = Offset(stripeX, top + thumbSize - 2f),
-                strokeWidth = 2f
-            )
+            drawLine(color = Color.White, start = Offset(stripeX, top + 2f), end = Offset(stripeX, top + thumbSize - 2f), strokeWidth = 2f)
         }
     }
 }
