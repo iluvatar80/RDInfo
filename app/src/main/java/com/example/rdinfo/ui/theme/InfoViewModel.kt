@@ -11,6 +11,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.stateIn
 
 /**
  * Zentrales ViewModel für die Einsatz-/Info-Ansicht.
@@ -49,6 +53,14 @@ class InfoViewModel : ViewModel() {
     fun setWeightKg(v: Double?) {
         _weightKg.value = v
     }
+
+    fun useCases(repo: InfoRepository) =
+        selectedDrug
+            .flatMapLatest { d ->
+                if (d != null) repo.observeUseCasesByDrug(d.id)
+                else flowOf(emptyList())
+            }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /**
      * Auswahl eines Einsatzfalls → passende Formulierung (Route/Konzentration) ermitteln
