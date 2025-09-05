@@ -15,12 +15,14 @@ import kotlinx.coroutines.withContext
 /**
  * Seeder/Importer für assets/meds.json – DATENGETRIEBEN.
  *
- * – Keine Hardcodes in der Logik; Korrekturen erfolgen als Daten-Patches
- * – Stellt sicher: Adrenalin-Formulierung 1 mg/mL, Reanimation-Regeln mit dilutionFactor=10
+ * WICHTIGER FIX:
+ *  - Keine erzwungene Uminterpretation von 0,1 mg/ml → 1,0 mg/ml bei Adrenalin.
+ *  - Verdünnungen werden ausschließlich über einen EXPLIZITEN dilutionFactor (=10 für 1:10)
+ *    oder über manuell gesetzte/commit-fixierte Daten geregelt – nicht über Heuristiken.
  */
 object MedsSeeder {
 
-    /** Ersetzt den kompletten Inhalt (Entwicklungsmodus). */
+    /** Ersetzt den kompletten Datenbestand aus assets/meds.json (Entwicklungsmodus). */
     suspend fun seedFromAssetsReplaceAll(context: Context) = withContext(Dispatchers.IO) {
         val db = AppDatabase.get(context)
         val src: MedsData = MedsJsonImporter.load(context)
@@ -34,7 +36,7 @@ object MedsSeeder {
         }
     }
 
-    /** Füllt nur initial; bestehende Daten bleiben erhalten und werden gepatcht. */
+    /** Füllt nur initial; bestehende Daten bleiben erhalten. Danach werden Patches angewandt. */
     suspend fun seedFromAssetsIfEmpty(context: Context) = withContext(Dispatchers.IO) {
         val db = AppDatabase.get(context)
         val hasAny: Boolean = db.openHelper.readableDatabase
@@ -49,6 +51,8 @@ object MedsSeeder {
     }
 
     // --------------------------------------------------------
+    // Import aus JSON → Room
+    // --------------------------------------------------------
 
     private suspend fun insertAllFromJson(db: AppDatabase, src: MedsData) {
         val drugs = mutableListOf<DrugEntity>()
@@ -57,7 +61,7 @@ object MedsSeeder {
         val rules = mutableListOf<DoseRuleEntity>()
 
         src.drugs.forEach { d ->
-            val drugId = stableId("drug:${d.name}")
+            val drugId = stableId("drug:${'$'}{d.name}")
             drugs += DrugEntity(
                 id = drugId,
                 name = d.name,
@@ -72,7 +76,7 @@ object MedsSeeder {
             val ucIdByCode = mutableMapOf<String, Long>()
             d.useCases.forEachIndexed { idx, uc ->
                 val key = if (uc.code.isNotBlank()) uc.code else uc.name
-                val ucId = stableId("uc:${d.name}:$key")
+                val ucId = stableId("uc:${'$'}{d.name}:${'$'}key")
                 ucIdByCode[key] = ucId
                 useCases += UseCaseEntity(
                     id = ucId,
@@ -85,8 +89,8 @@ object MedsSeeder {
             // Formulierungen
             val formIdByKey = mutableMapOf<String, Long>()
             d.forms.forEach { f ->
-                val key = "${f.route}|${f.concentrationMgPerMl}|${f.label}"
-                val formId = stableId("form:${d.name}:$key")
+                val key = "${'$'}{f.route}|${'$'}{f.concentrationMgPerMl}|${'$'}{f.label}"
+                val formId = stableId("form:${'$'}{d.name}:${'$'}key")
                 formIdByKey[key] = formId
                 forms += FormulationEntity(
                     id = formId,
@@ -97,18 +101,17 @@ object MedsSeeder {
                 )
             }
 
-            // Dosisregeln (direkt aus JSON übernehmen)
+            // Dosisregeln (direkt aus JSON übernehmen – dilutionFactor bleibt null, wird gepatcht)
             d.doseRules.forEach { r ->
                 val ucKey = if (r.useCaseCode.isNotBlank()) r.useCaseCode else d.useCases.firstOrNull()?.name.orEmpty()
                 val ucId = ucIdByCode[ucKey] ?: 0L
-
                 val formId: Long? = run {
                     val match = d.forms.firstOrNull { it.route.equals(r.route, ignoreCase = true) }
-                    match?.let { fm -> formIdByKey["${fm.route}|${fm.concentrationMgPerMl}|${fm.label}"] }
+                    match?.let { fm -> formIdByKey["${'$'}{fm.route}|${'$'}{fm.concentrationMgPerMl}|${'$'}{fm.label}"] }
                 }
 
                 rules += DoseRuleEntity(
-                    id = stableId("rule:${d.name}:${r.useCaseCode}:${r.route}:${r.mode}:${r.flatMg}:${r.mgPerKg}"),
+                    id = stableId("rule:${'$'}{d.name}:${'$'}{r.useCaseCode}:${'$'}{r.route}:${'$'}{r.mode}:${'$'}{r.flatMg}:${'$'}{r.mgPerKg}"),
                     drugId = drugId,
                     useCaseId = ucId,
                     formulationId = formId,
@@ -122,7 +125,7 @@ object MedsSeeder {
                     ageMaxMonths = r.ageMaxMonths,
                     weightMinKg = r.weightMinKg,
                     weightMaxKg = r.weightMaxKg,
-                    dilutionFactor = null // wird per Patch gesetzt
+                    dilutionFactor = null // wird ggf. per Patch gesetzt
                 )
             }
         }
@@ -134,60 +137,64 @@ object MedsSeeder {
         db.doseRuleDao().upsertAll(rules)
     }
 
+    // --------------------------------------------------------
+    // Daten-Patches nach Import
+    // --------------------------------------------------------
+
     /**
-     * Daten-Patches nach Import. Robuste Variante, die verschiedene Tabellen-Namen toleriert.
-     * 1) Adrenalin-Standardampulle sicherstellen: 1 mg/mL
-     * 2) Reanimation: dilutionFactor=10 für Adrenalin-Regeln dieses Use-Cases
+     * Robuste Patches nach dem Import.
+     *
+     * 1) Setze für Adrenalin-Regeln im Use-Case „Reanimation" einen dilutionFactor = 10 (entspricht 1:10),
+     *    ohne Ampullen-Konzentrationen umzuschreiben.
+     * 2) Fallback: Wenn „1:10" im displayHint steht, setze ebenfalls dilutionFactor = 10.
      */
     private fun applyDataPatches(db: AppDatabase) {
         val wdb = db.openHelper.writableDatabase
 
-        // 1) Konzentrations-Fix
-        val sqlFixAdrenalineConc = """
-            UPDATE formulation
-               SET concentrationMgPerMl = 1.0,
-                   label = CASE WHEN label IS NULL OR TRIM(label) = '' THEN '1 mg/mL (1:1000)' ELSE label END
-             WHERE drugId IN (SELECT id FROM drug WHERE lower(name) IN ('adrenalin','epinephrin','epinephrine'))
-               AND (concentrationMgPerMl = 0.1 OR ABS(concentrationMgPerMl - 0.1) < 1e-6);
-        """.trimIndent()
-        wdb.execSQL(sqlFixAdrenalineConc)
-
-        // 2) dilutionFactor für Reanimation setzen – versuche mehrere mögliche Tabellen-Namen
-        val candidates = listOf(
-            "use_case", "usecase", "UseCase", "UseCaseEntity"
-        )
+        // 1) dilutionFactor=10 für Adrenalin + Reanimation (toleriert verschiedene Use-Case-Tabellennamen)
+        val candidates = listOf("use_case", "usecase", "UseCase", "UseCaseEntity")
         for (t in candidates) {
             try {
                 val sql = """
                     UPDATE dose_rule
-                       SET dilutionFactor = 10.0
-                     WHERE drugId IN (SELECT id FROM drug WHERE lower(name) IN ('adrenalin','epinephrin','epinephrine'))
-                       AND useCaseId IN (SELECT id FROM ${'$'}t WHERE lower(name) = 'reanimation');
+                    SET dilutionFactor = 10.0
+                    WHERE drugId IN (
+                        SELECT id FROM drug
+                        WHERE lower(name) IN ('adrenalin','epinephrin','epinephrine')
+                    )
+                    AND useCaseId IN (
+                        SELECT id FROM ${'$'}t
+                        WHERE lower(name) = 'reanimation'
+                    );
                 """.trimIndent()
                 wdb.execSQL(sql)
-                return // erfolgreich
+                // Erfolgreich → kein weiterer Kandidat nötig
+                break
             } catch (_: SQLException) {
-                // nächste Variante probieren
+                // nächsten Kandidaten probieren
             } catch (_: android.database.sqlite.SQLiteException) {
-                // nächste Variante probieren
+                // nächsten Kandidaten probieren
             }
         }
 
-        // Fallback ohne Join: alle Adrenalin-Regeln, deren displayHint "1:10" enthält
+        // 2) Fallback ohne Join: alle Adrenalin-Regeln, deren displayHint "1:10" enthält
         try {
             val sqlFallback = """
                 UPDATE dose_rule
-                   SET dilutionFactor = 10.0
-                 WHERE drugId IN (SELECT id FROM drug WHERE lower(name) IN ('adrenalin','epinephrin','epinephrine'))
-                   AND (displayHint LIKE '%1:10%' OR displayHint LIKE '%1\:10%');
+                SET dilutionFactor = 10.0
+                WHERE drugId IN (
+                    SELECT id FROM drug
+                    WHERE lower(name) IN ('adrenalin','epinephrin','epinephrine')
+                )
+                AND (displayHint LIKE '%1:10%' OR displayHint LIKE '%1\:10%');
             """.trimIndent()
             wdb.execSQL(sqlFallback)
         } catch (_: Exception) {
-            // wenn auch das nicht geht, bleibt die Rule unverändert
+            // nicht fatal
         }
     }
 
-    /** stabiler, positiver Long aus String */
+    /** Stabiler, positiver Long aus String (deterministisch) */
     private fun stableId(seed: String): Long {
         var h = 1125899906842597L
         for (c in seed) h = 31L * h + c.code

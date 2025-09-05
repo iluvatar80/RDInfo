@@ -5,13 +5,15 @@ import com.example.rdinfo.data.local.DoseRuleEntity
 import kotlin.math.roundToInt
 
 data class DoseResult(
-    val doseMg: Double?,
-    val volumeMl: Double?,
-    val concentrationUsedMgPerMl: Double?,
-    val cappedByMax: Boolean
+    val doseMg: Double?,                 // berechnete Wirkstoffmenge
+    val volumeMl: Double?,               // berechnetes Volumen
+    val concentrationUsedMgPerMl: Double?,// effektiv verwendete Konzentration
+    val cappedByMax: Boolean             // true, wenn Maximaldosis gegriffen hat
 )
 
 object DoseMath {
+
+    /** Dosis in mg berechnen (mg/kg oder flat), inkl. Maximaldeckelung */
     fun computeDoseMg(rule: DoseRuleEntity, weightKg: Double?): Pair<Double?, Boolean> {
         val dose = when {
             rule.mgPerKg != null && weightKg != null -> rule.mgPerKg * weightKg
@@ -19,34 +21,30 @@ object DoseMath {
             else -> null
         }
         if (dose == null) return null to false
+
         val max = rule.maxSingleMg
         return if (max != null && dose > max) max to true else dose to false
     }
 
+    /**
+     * Effektive Konzentration (mg/ml) bestimmen.
+     * Reihenfolge:
+     * 1) manueller Override (falls gesetzt)
+     * 2) Ampullen-Konzentration der Formulierung (stock)
+     * 3) expliziter Verdünnungsfaktor in der Regel (falls gepflegt)
+     *
+     * WICHTIG: KEIN heuristisches Ableiten aus displayHint (z. B. "1:10"),
+     * um doppelte Verdünnungen zu vermeiden, wenn die Formulierung bereits
+     * verdünnt angegeben ist (z. B. 0,1 mg/ml bei Adrenalin i.v.).
+     */
     fun effectiveConcentrationMgPerMl(
         stockConcMgPerMl: Double?,
         overrideConcMgPerMl: Double?,
         rule: DoseRuleEntity
     ): Double? {
         val base = overrideConcMgPerMl ?: stockConcMgPerMl ?: return null
-
-        // 1) Expliziter Verdünnungsfaktor aus der Datenbank
-        val explicit = rule.dilutionFactor
-        if (explicit != null && explicit > 0.0) return base / explicit
-
-        // 2) Fallback (datengetrieben): Erkenne "1:10" im displayHint der Regel
-        val hint = rule.displayHint
-        if (hint != null && containsOneToTen(hint)) return base / 10.0
-
-        // 3) Keine Verdünnung
-        return base
-    }
-
-    private fun containsOneToTen(text: String): Boolean {
-        val compact = buildString {
-            for (c in text) if (!c.isWhitespace()) append(c)
-        }.lowercase()
-        return ":" in compact && "1:10" in compact
+        val factor = rule.dilutionFactor
+        return if (factor != null && factor > 0.0) base / factor else base
     }
 
     private fun roundToStep(value: Double, step: Double): Double {
@@ -55,6 +53,7 @@ object DoseMath {
         return n * step
     }
 
+    /** Vollständige Berechnung für UI */
     fun compute(
         rule: DoseRuleEntity,
         weightKg: Double?,
@@ -63,8 +62,13 @@ object DoseMath {
     ): DoseResult {
         val (doseMg, capped) = computeDoseMg(rule, weightKg)
         val effConc = effectiveConcentrationMgPerMl(stockConcMgPerMl, overrideConcMgPerMl, rule)
-        val volRaw = if (doseMg != null && effConc != null && effConc > 0.0) doseMg / effConc else null
+
+        val volRaw = if (doseMg != null && effConc != null && effConc > 0.0) {
+            doseMg / effConc
+        } else null
+
         val volRounded = volRaw?.let { roundToStep(it, rule.roundingMl) }
+
         return DoseResult(
             doseMg = doseMg,
             volumeMl = volRounded,
