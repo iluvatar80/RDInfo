@@ -34,6 +34,10 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.round
 import kotlin.math.roundToInt
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 
 @Composable
 fun EinsatzScreen() {
@@ -193,14 +197,26 @@ fun EinsatzScreen() {
                 ),
             ) { Text("Medikamente", style = MaterialTheme.typography.labelLarge) }
 
-            OutlinedButton(
-                onClick = { },
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
-                border = BorderStroke(1.dp, accent)
-            ) { Text("Werte", style = MaterialTheme.typography.labelLarge) }
+            var menuOpen by remember { mutableStateOf(false) }
+
+            IconButton(onClick = { menuOpen = true }) {
+                Icon(Icons.Filled.MoreVert, contentDescription = "Menü öffnen")
+            }
+
+            DropdownMenu(
+                expanded = menuOpen,
+                onDismissRequest = { menuOpen = false }
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Einstellungen") },
+                    onClick = { menuOpen = false /* TODO: Aktion */ }
+                )
+                // Weitere Menüeinträge bei Bedarf …
+            }
         }
 
-        Divider()
+
+            Divider()
 
         // Alter
         Text("Jahre: $years", style = MaterialTheme.typography.bodyMedium)
@@ -267,14 +283,42 @@ fun EinsatzScreen() {
             }
         )
 
-        // Einsatzfall
-        Selector(
-            label = "Einsatzfall",
-            value = selectedUseCase?.name ?: if (useCases.isEmpty()) "—" else "Use-Case wählen",
-            options = useCases.map { it.name },
-            enabled = useCases.isNotEmpty(),
-            onPick = { n -> selectedUseCase = useCases.firstOrNull { it.name == n } }
-        )
+// Einsatzfall
+        var ucMenu by remember { mutableStateOf(false) }
+
+        @OptIn(ExperimentalMaterial3Api::class)
+        ExposedDropdownMenuBox(
+            expanded = ucMenu,
+            onExpandedChange = { ucMenu = !ucMenu }
+        ) {
+            OutlinedTextField(
+                value = selectedUseCase?.name ?: "Use-Case wählen",
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Einsatzfall") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = ucMenu) },
+                modifier = Modifier
+                    .menuAnchor()
+                    .fillMaxWidth()
+                    .heightIn(min = 36.dp)
+            )
+
+            ExposedDropdownMenu(
+                expanded = ucMenu,
+                onDismissRequest = { ucMenu = false }
+            ) {
+                useCases.forEach { uc ->
+                    DropdownMenuItem(
+                        text = { Text(uc.name) },
+                        onClick = {
+                            selectedUseCase = uc
+                            ucMenu = false
+                        }
+                    )
+                }
+            }
+        }
+
 
         // --- Ampullenkonzentration (statt Applikationsform) ---
         ElevatedCard(

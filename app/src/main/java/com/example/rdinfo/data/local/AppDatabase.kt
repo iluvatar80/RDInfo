@@ -14,7 +14,7 @@ import androidx.room.RoomDatabase
         DoseRuleEntity::class,
         InfoEntity::class
     ],
-    version = 5, // Schema geändert -> Version erhöht
+    version = 6, // Schema geändert -> Version erhöht
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
