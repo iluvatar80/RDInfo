@@ -1,37 +1,20 @@
+// File: app/src/main/java/com/example/rdinfo/ui/theme/Type.kt
 package com.example.rdinfo.ui.theme
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
-import com.example.rdinfo.data.InfoRepository
-import com.example.rdinfo.data.local.AppDatabase
-import com.example.rdinfo.data.local.InfoEntity
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
+import androidx.compose.material3.Typography
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 
-data class InfoUiState(
-    val items: List<InfoEntity> = emptyList()
+// Material3-Typografie – minimal, ohne weitere Klassen
+val Typography = Typography(
+    bodyLarge = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Normal,
+        fontSize = 16.sp,
+        lineHeight = 24.sp,
+        letterSpacing = 0.5.sp
+    )
+    // Weitere Styles bei Bedarf ergänzen …
 )
-
-class InfoViewModel(app: Application) : AndroidViewModel(app) {
-
-    private val repo by lazy {
-        val db = AppDatabase.get(app)
-        InfoRepository(db.infoDao())
-    }
-
-    val state: StateFlow<InfoUiState> =
-        repo.observeAll()
-            .map { list -> InfoUiState(items = list) }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), InfoUiState())
-
-    fun add(title: String, detail: String) = viewModelScope.launch {
-        if (title.isNotBlank()) repo.add(title, detail)
-    }
-
-    fun delete(id: Long) = viewModelScope.launch { repo.delete(id) }
-    fun clear() = viewModelScope.launch { repo.clear() }
-}

@@ -86,7 +86,13 @@ fun EinsatzScreen() {
 
     // Defaults setzen, sobald Daten da sind
     LaunchedEffect(drugs) { if (drugs.isNotEmpty() && selectedDrug == null) selectedDrug = drugs.first() }
-    LaunchedEffect(useCases) { if (useCases.isNotEmpty() && selectedUseCase == null) selectedUseCase = useCases.first() }
+    LaunchedEffect(useCases) {
+        if (useCases.isNotEmpty()) {
+            val prefer = useCases.firstOrNull { it.name.equals("Reanimation", ignoreCase = true) }
+            selectedUseCase = prefer ?: useCases.first()
+        }
+    }
+
 
     // Erlaubte Formulierungen je nach Alter + Einsatzfall bestimmen (ohne Dropdown – auto select)
     LaunchedEffect(selectedDrug?.id, selectedUseCase?.id, years, months, formulations) {
