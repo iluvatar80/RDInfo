@@ -1,5 +1,6 @@
 // Zielpfad: app/src/main/java/com/rdinfo/MainActivity.kt
-// Ganze Datei – Berechnung ausgelagert nach logic/DosingCalculator.kt
+// Anpassung: Bei pädiatrischer Reanimation (<12 J.) wird bei MANUELLER Ampulle immer auf 10 ml Gesamtvolumen aufgezogen.
+// Daher: effektive Konz. = (mg der Ampulle) / 10 ml – unabhängig von der Ampullen-ML oder Ausgangs-Konzentration.
 
 package com.rdinfo
 
@@ -155,20 +156,46 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
 
         Spacer(Modifier.height(Spacing.sm))
 
-        // --- Ampullenkonzentration (Card, nutzt Repository) ---
-        var effectiveConc by rememberSaveable { mutableStateOf<Double?>(null) }
+        // --- Ampullenkonzentration (Card) ---
+        var concFromSection by rememberSaveable { mutableStateOf<Double?>(null) }
+        var manualConcFlag by rememberSaveable { mutableStateOf(false) }
+        var ampMg by rememberSaveable { mutableStateOf<Double?>(null) }
+        var ampMl by rememberSaveable { mutableStateOf<Double?>(null) }
+
         AmpouleConcentrationSection(
             medication = selectedMedication,
-            onEffectiveConcentrationChanged = { effectiveConc = it }
+            onStateChanged = { conc, manual, mgAmp, mlAmp ->
+                concFromSection = conc
+                manualConcFlag = manual
+                ampMg = mgAmp
+                ampMl = mlAmp
+            }
         )
 
         Spacer(Modifier.height(Spacing.lg))
 
         // --- Ergebnis (Dosierung/Volumen + Hinweis) ---
-        val dosing = remember(selectedMedication, selectedUseCase, effectiveWeight) {
-            computeDoseFor(selectedMedication, selectedUseCase, effectiveWeight)
+        val dosing = remember(selectedMedication, selectedUseCase, effectiveWeight, years) {
+            computeDoseFor(selectedMedication, selectedUseCase, effectiveWeight, years)
         }
-        val volumeMl = remember(dosing.mg, effectiveConc) { computeVolumeMl(dosing.mg, effectiveConc) }
+
+        // Sonderfall: pädiatrische Reanimation Adrenalin – bei MANUELLER Ampulle
+        // gilt: stets auf 10 ml NaCl auffüllen → effektive Konz. = (mg der Ampulle) / 10 ml
+        val needs10MlRule = selectedMedication == "Adrenalin" && selectedUseCase == "Reanimation" && years < 12
+
+        val concForVolume = remember(concFromSection, manualConcFlag, dosing.recommendedConcMgPerMl, ampMg, ampMl, needs10MlRule) {
+            if (manualConcFlag) {
+                if (needs10MlRule && ampMg != null) {
+                    ampMg!! / 10.0
+                } else {
+                    concFromSection
+                }
+            } else {
+                dosing.recommendedConcMgPerMl ?: concFromSection
+            }
+        }
+
+        val volumeMl = remember(dosing.mg, concForVolume) { computeVolumeMl(dosing.mg, concForVolume) }
 
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(Spacing.lg)) {
@@ -193,7 +220,7 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
 
         Spacer(Modifier.height(Spacing.sm))
 
-        // --- Info‑Buttons + Text (liest aus Repository) ---
+        // --- Info‑Buttons + Text (Repository) ---
         var activeTab by rememberSaveable { mutableStateOf(InfoTab.INDIKATION) }
         InfoTabsRow(activeTab = activeTab, onChange = { activeTab = it })
         Spacer(Modifier.height(Spacing.xs))
@@ -223,7 +250,6 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
 @Composable
 private fun LabelValueBlock(rows: List<Pair<String, String>>) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-        // Labels-Spalte: nimmt automatisch die Breite des längsten Labels an
         Column(modifier = Modifier.width(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
             rows.forEachIndexed { index, (label, _) ->
                 Text("$label:", style = MaterialTheme.typography.bodyLarge)
@@ -231,7 +257,6 @@ private fun LabelValueBlock(rows: List<Pair<String, String>>) {
             }
         }
         Spacer(Modifier.width(8.dp))
-        // Werte-Spalte: fängt bei gleicher X-Position an -> Ziffern bündig untereinander
         Column(modifier = Modifier.weight(1f)) {
             rows.forEachIndexed { index, (_, value) ->
                 Text(value, style = MaterialTheme.typography.bodyLarge)
@@ -295,9 +320,8 @@ private fun InfoTabsRow(activeTab: InfoTab, onChange: (InfoTab) -> Unit) {
 @Composable
 private fun AmpouleConcentrationSection(
     medication: String,
-    onEffectiveConcentrationChanged: (Double?) -> Unit
+    onStateChanged: (concMgPerMl: Double?, manual: Boolean, mgAmpoule: Double?, mlAmpoule: Double?) -> Unit
 ) {
-    // Daten aus Repository lesen
     val med = remember(medication) { MedicationRepository.getMedicationByName(medication) }
     val defaultText = med?.defaultConcentration?.display ?: "—"
     val defaultValue = med?.defaultConcentration?.mgPerMl
@@ -306,9 +330,9 @@ private fun AmpouleConcentrationSection(
     var mgText by rememberSaveable(medication) { mutableStateOf("") }
     var mlText by rememberSaveable(medication) { mutableStateOf("") }
 
-    // Wenn nicht manuell, melde Default an den Caller
+    // Initial & bei Umschalten Zustand melden
     LaunchedEffect(medication, manual) {
-        if (!manual) onEffectiveConcentrationChanged(defaultValue)
+        if (!manual) onStateChanged(defaultValue, false, null, null) else onStateChanged(null, true, null, null)
     }
 
     Card(
@@ -355,7 +379,7 @@ private fun AmpouleConcentrationSection(
                 val mg = mgText.replace(',', '.').toDoubleOrNull()
                 val ml = mlText.replace(',', '.').toDoubleOrNull()
                 val conc = if (mg != null && ml != null && ml > 0.0) mg / ml else null
-                LaunchedEffect(mgText, mlText) { onEffectiveConcentrationChanged(conc) }
+                LaunchedEffect(mgText, mlText) { onStateChanged(conc, true, mg, ml) }
             }
         }
     }

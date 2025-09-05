@@ -3,6 +3,7 @@
 .idea/AndroidProjectSystem.xml
 .idea/compiler.xml
 .idea/deploymentTargetSelector.xml
+.idea/deviceManager.xml
 .idea/gradle.xml
 .idea/migrations.xml
 .idea/misc.xml
@@ -13,7 +14,10 @@ app/build.gradle.kts
 app/proguard-rules.pro
 app/src/main/AndroidManifest.xml
 app/src/main/java/com/rdinfo/MainActivity.kt
+app/src/main/java/com/rdinfo/data/MedicationRepository.kt
+app/src/main/java/com/rdinfo/logic/DosingCalculator.kt
 app/src/main/java/com/rdinfo/ui/theme/Color.kt
+app/src/main/java/com/rdinfo/ui/theme/Design.kt
 app/src/main/java/com/rdinfo/ui/theme/Theme.kt
 app/src/main/java/com/rdinfo/ui/theme/Type.kt
 app/src/main/res/drawable/ic_launcher_background.xml
@@ -43,4 +47,5 @@ gradle/wrapper/gradle-wrapper.jar
 gradle/wrapper/gradle-wrapper.properties
 gradlew
 gradlew.bat
+raw-links.txt
 settings.gradle.kts
