@@ -224,7 +224,7 @@ fun MedicationInput(
         )
 
         // Gewicht näher an die Slider
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(4.dp))
         OutlinedTextField(
             value = weightText,
             onValueChange = { s ->
@@ -237,14 +237,14 @@ fun MedicationInput(
         )
 
         // Berechnung näher nach oben
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(4.dp))
         ElevatedCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
                 Text("Berechnung", style = MaterialTheme.typography.titleMedium)
                 Text("Folgt im nächsten Schritt.", style = MaterialTheme.typography.bodyMedium)
             }
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(4.dp))
     }
 }
 
@@ -260,10 +260,10 @@ fun LabeledIntCompactSlider(
     Column(Modifier.fillMaxWidth()) {
         // Label sehr nah am Slider
         Text("$label: $value", style = MaterialTheme.typography.bodyLarge)
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.height(0.dp))
         CompactSlider(value = value, range = range, onChange = onChange)
         // Zierlinie direkt unter dem Slider
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.height(0.dp))
         Divider(thickness = 1.dp, color = SoftPink)
     }
 }

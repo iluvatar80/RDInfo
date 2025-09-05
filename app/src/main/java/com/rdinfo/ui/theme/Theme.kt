@@ -51,8 +51,7 @@ fun RDInfoTheme(
     val colors = if (darkTheme) DarkColors else LightColors
     MaterialTheme(
         colorScheme = colors,
-        typography = Typography,   // aus Type.kt der Vorlage
-        // WICHTIG: KEIN shapes-Parameter hier
+        typography = Typography, // kommt aus Type.kt deiner Vorlage
         content = content
     )
 }

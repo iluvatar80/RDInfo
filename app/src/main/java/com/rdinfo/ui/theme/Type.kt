@@ -6,29 +6,60 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-// Set of Material typography styles to start with
+/**
+ * Zentrale Typografie für RDInfo
+ * Alle 16sp-Texte (titleMedium, bodyLarge) → 14sp
+ * titleLarge bleibt 22sp (für „⋮“ usw.)
+ */
 val Typography = Typography(
-    bodyLarge = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Normal,
-        fontSize = 16.sp,
-        lineHeight = 24.sp,
-        letterSpacing = 0.5.sp
-    )
-    /* Other default text styles to override
+    // Titel
     titleLarge = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Normal,
         fontSize = 22.sp,
-        lineHeight = 28.sp,
-        letterSpacing = 0.sp
+        fontWeight = FontWeight.Normal,
+        fontFamily = FontFamily.Default
+    ),
+    titleMedium = TextStyle(
+        fontSize = 14.sp, // vorher 16sp
+        fontWeight = FontWeight.Medium,
+        fontFamily = FontFamily.Default
+    ),
+    titleSmall = TextStyle(
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Medium,
+        fontFamily = FontFamily.Default
+    ),
+
+    // Fließtext
+    bodyLarge = TextStyle(
+        fontSize = 14.sp, // vorher 16sp
+        fontWeight = FontWeight.Normal,
+        fontFamily = FontFamily.Default
+    ),
+    bodyMedium = TextStyle(
+        fontSize = 14.sp, // belassen
+        fontWeight = FontWeight.Normal,
+        fontFamily = FontFamily.Default
+    ),
+    bodySmall = TextStyle(
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Normal,
+        fontFamily = FontFamily.Default
+    ),
+
+    // Labels/Buttons
+    labelLarge = TextStyle(
+        fontSize = 14.sp, // TextButton „Zurück“, etc.
+        fontWeight = FontWeight.Medium,
+        fontFamily = FontFamily.Default
+    ),
+    labelMedium = TextStyle(
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Medium,
+        fontFamily = FontFamily.Default
     ),
     labelSmall = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Medium,
         fontSize = 11.sp,
-        lineHeight = 16.sp,
-        letterSpacing = 0.5.sp
-    )
-    */
+        fontWeight = FontWeight.Medium,
+        fontFamily = FontFamily.Default
+    ),
 )
