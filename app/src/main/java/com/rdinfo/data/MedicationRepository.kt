@@ -8,20 +8,18 @@ import org.json.JSONObject
 
 /**
  * UI-nahes Repository. Lädt Medikamente direkt aus assets/medications.json
- * (ohne Abhängigkeit zu einer separaten Loader-Klasse), stellt bequeme
- * Zugriffsmethoden für die UI bereit.
+ * (ohne Abhängigkeit zu MedicationAssetRepository) und stellt Helper bereit.
  */
 object MedicationRepository {
 
-    // ----------------------------- Public API --------------------------------------------
+    // -------------------------------- Public API -----------------------------------------
 
-    fun listMedications(context: Context): List<Medication> =
-        loadFromAssets(context)
+    fun listMedications(context: Context): List<Medication> = loadFromAssets(context)
 
     fun getMedicationById(context: Context, id: String): Medication? =
         loadFromAssets(context).firstOrNull { it.id == id }
 
-    fun useCasesFor(context: Context, medicationId: String) =
+    fun useCasesFor(context: Context, medicationId: String): List<UseCase> =
         getMedicationById(context, medicationId)?.useCases ?: emptyList()
 
     fun routesFor(context: Context, medicationId: String, useCaseId: String): List<String> =
@@ -33,14 +31,14 @@ object MedicationRepository {
     fun infoTextsFor(context: Context, medicationId: String): InfoTexts? =
         getMedicationById(context, medicationId)?.info
 
-    // ----------------------------- Loader -------------------------------------------------
+    // -------------------------------- Loader ---------------------------------------------
 
     private fun loadFromAssets(context: Context, assetName: String = "medications.json"): List<Medication> {
         val json = context.assets.open(assetName).bufferedReader(Charsets.UTF_8).use { it.readText() }
         return parseMedications(json)
     }
 
-    // ----------------------------- Parsing ------------------------------------------------
+    // -------------------------------- Parsing --------------------------------------------
 
     private fun parseMedications(json: String): List<Medication> {
         val root = JSONObject(json)

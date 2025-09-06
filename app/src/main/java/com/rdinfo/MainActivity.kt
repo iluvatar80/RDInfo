@@ -4,6 +4,7 @@ package com.rdinfo
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -38,8 +39,8 @@ private fun AppScreen() {
     var route by remember(medId, useCaseId) { mutableStateOf(useCaseId?.let { MedicationRepository.routesFor(ctx, medId, it).firstOrNull() }) }
 
     // Eingaben
-    var years by remember { mutableIntStateOf(8) }
-    var months by remember { mutableIntStateOf(0) }
+    var years by remember { mutableStateOf(8) }
+    var months by remember { mutableStateOf(0) }
     var weight by remember { mutableStateOf("") }
 
     var manualAmp by remember { mutableStateOf(false) }
@@ -136,7 +137,7 @@ private fun AppScreen() {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(
                         value = ampMg,
-                        onValueChange = { ampMg = it },
+                        onValueChange = { ampMg = it.filter { ch -> ch.isDigit() || ch == ',' || ch == '.' } },
                         label = { Text("mg") },
                         singleLine = true,
                         keyboardOptions = androidx.compose.ui.text.input.KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -145,7 +146,7 @@ private fun AppScreen() {
                     Spacer(Modifier.width(8.dp))
                     OutlinedTextField(
                         value = ampMl,
-                        onValueChange = { ampMl = it },
+                        onValueChange = { ampMl = it.filter { ch -> ch.isDigit() || ch == ',' || ch == '.' } },
                         label = { Text("ml") },
                         singleLine = true,
                         keyboardOptions = androidx.compose.ui.text.input.KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -218,7 +219,9 @@ private fun Dropdown(
 ) {
     var expanded by remember { mutableStateOf(false) }
     val label = items.firstOrNull { it.first == selectedId }?.second ?: "—"
-    Surface(onClick = { expanded = true }, tonalElevation = 1.dp) {
+    Surface(tonalElevation = 1.dp, modifier = Modifier
+        .fillMaxWidth()
+        .clickable { expanded = true }) {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(label, Modifier.weight(1f))
             Text("▾")
