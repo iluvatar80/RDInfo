@@ -1,44 +1,37 @@
-// app/src/main/java/com/rdinfo/data/MedicationRepository.kt
+// app/src/main/java/com/rdinfo/data/MedicationAssetRepository.kt
 package com.rdinfo.data
 
 import android.content.Context
+import android.util.Log
 import com.rdinfo.data.model.*
 import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * UI-nahes Repository. Lädt Medikamente direkt aus assets/medications.json
- * (ohne Abhängigkeit zu MedicationAssetRepository) und stellt Helper bereit.
+ * Liest regelgetriebene Medikamentedaten aus assets/medications.json
+ * und mappt sie auf die Kotlin-Modelle (ohne externe JSON-Library).
  */
-object MedicationRepository {
+object MedicationAssetRepository {
+    private const val TAG = "MedicationAssetRepo"
 
-    // -------------------------------- Public API -----------------------------------------
-
-    fun listMedications(context: Context): List<Medication> = loadFromAssets(context)
-
-    fun getMedicationById(context: Context, id: String): Medication? =
-        loadFromAssets(context).firstOrNull { it.id == id }
-
-    fun useCasesFor(context: Context, medicationId: String): List<UseCase> =
-        getMedicationById(context, medicationId)?.useCases ?: emptyList()
-
-    fun routesFor(context: Context, medicationId: String, useCaseId: String): List<String> =
-        getMedicationById(context, medicationId)
-            ?.useCases?.firstOrNull { it.id == useCaseId }
-            ?.routes?.map { it.route }
-            ?: emptyList()
-
-    fun infoTextsFor(context: Context, medicationId: String): InfoTexts? =
-        getMedicationById(context, medicationId)?.info
-
-    // -------------------------------- Loader ---------------------------------------------
-
-    private fun loadFromAssets(context: Context, assetName: String = "medications.json"): List<Medication> {
-        val json = context.assets.open(assetName).bufferedReader(Charsets.UTF_8).use { it.readText() }
-        return parseMedications(json)
+    /**
+     * Lädt und parst die Medikamentenliste aus den App-Assets.
+     * @param assetName Standard: "medications.json"
+     */
+    fun load(context: Context, assetName: String = "medications.json"): List<Medication> {
+        val json = readAsset(context, assetName)
+        return try {
+            parseMedications(json)
+        } catch (t: Throwable) {
+            Log.e(TAG, "Parsing medications failed", t)
+            emptyList()
+        }
     }
 
-    // -------------------------------- Parsing --------------------------------------------
+    private fun readAsset(context: Context, assetName: String): String =
+        context.assets.open(assetName).bufferedReader(Charsets.UTF_8).use { it.readText() }
+
+    // --- Parsing ---------------------------------------------------------------------------
 
     private fun parseMedications(json: String): List<Medication> {
         val root = JSONObject(json)
@@ -129,6 +122,8 @@ object MedicationRepository {
         }
     }
 
+    // --- Helpers --------------------------------------------------------------------------
+
     private fun JSONObject.toInfoTexts(): InfoTexts = InfoTexts(
         indication = this.optStringOrNull("indication"),
         contraindication = this.optStringOrNull("contraindication"),
@@ -136,7 +131,6 @@ object MedicationRepository {
         sideEffect = this.optStringOrNull("sideEffect"),
     )
 
-    // JSONArray helper
     private inline fun <T> JSONArray.mapObjects(transform: (JSONObject) -> T): List<T> {
         val out = ArrayList<T>(length())
         for (i in 0 until length()) {
@@ -146,7 +140,6 @@ object MedicationRepository {
         return out
     }
 
-    // org.json safe accessors
     private fun JSONObject.optStringOrNull(key: String): String? = if (has(key) && !isNull(key)) optString(key) else null
     private fun JSONObject.optDoubleOrNull(key: String): Double? = if (has(key) && !isNull(key)) optDouble(key) else null
     private fun JSONObject.optIntOrNull(key: String): Int? = if (has(key) && !isNull(key)) optInt(key) else null
@@ -154,6 +147,3 @@ object MedicationRepository {
     private fun JSONObject.optJSONObjectOrNull(key: String): JSONObject? = if (has(key) && !isNull(key)) optJSONObject(key) else null
     private fun JSONObject.optJSONArray(key: String): JSONArray = if (has(key) && !isNull(key)) getJSONArray(key) else JSONArray()
 }
-
-/** Enum für die Info-Tabs in der UI. */
-enum class MedicationInfoSections { Indication, Contraindication, Effect, SideEffect }
