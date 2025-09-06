@@ -1,6 +1,5 @@
 // Zielpfad: app/src/main/java/com/rdinfo/MainActivity.kt
-// Anpassung: Bei pädiatrischer Reanimation (<12 J.) wird bei MANUELLER Ampulle immer auf 10 ml Gesamtvolumen aufgezogen.
-// Daher: effektive Konz. = (mg der Ampulle) / 10 ml – unabhängig von der Ampullen-ML oder Ausgangs-Konzentration.
+// Vollständige, bereinigte Datei (inkl. Tabellenlayout im Berechnungsblock)
 
 package com.rdinfo
 
@@ -156,21 +155,34 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
 
         Spacer(Modifier.height(Spacing.sm))
 
-        // --- Ampullenkonzentration (Card) ---
+        // --- Ampullenkonzentration + Applikationsart nebeneinander ---
         var concFromSection by rememberSaveable { mutableStateOf<Double?>(null) }
         var manualConcFlag by rememberSaveable { mutableStateOf(false) }
         var ampMg by rememberSaveable { mutableStateOf<Double?>(null) }
         var ampMl by rememberSaveable { mutableStateOf<Double?>(null) }
 
-        AmpouleConcentrationSection(
-            medication = selectedMedication,
-            onStateChanged = { conc, manual, mgAmp, mlAmp ->
-                concFromSection = conc
-                manualConcFlag = manual
-                ampMg = mgAmp
-                ampMl = mlAmp
-            }
-        )
+        val routeOptions = remember { listOf("i.v.", "i.m.", "i.o.", "inhalativ", "s.c.") }
+        var selectedRoute by rememberSaveable { mutableStateOf(routeOptions.first()) }
+
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+            AmpouleConcentrationSection(
+                medication = selectedMedication,
+                onStateChanged = { conc, manual, mgAmp, mlAmp ->
+                    concFromSection = conc
+                    manualConcFlag = manual
+                    ampMg = mgAmp
+                    ampMl = mlAmp
+                },
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(Modifier.width(Spacing.sm))
+            RouteSection(
+                routes = routeOptions,
+                selected = selectedRoute,
+                onSelect = { selectedRoute = it },
+                modifier = Modifier.weight(1f)
+            )
+        }
 
         Spacer(Modifier.height(Spacing.lg))
 
@@ -179,22 +191,18 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
             computeDoseFor(selectedMedication, selectedUseCase, effectiveWeight, years)
         }
 
-        // Sonderfall: pädiatrische Reanimation Adrenalin – bei MANUELLER Ampulle
-        // gilt: stets auf 10 ml NaCl auffüllen → effektive Konz. = (mg der Ampulle) / 10 ml
+        // Sonderfall: pädiatrische Reanimation Adrenalin – bei MANUELLER Ampulle auf 10 ml auffüllen
         val needs10MlRule = selectedMedication == "Adrenalin" && selectedUseCase == "Reanimation" && years < 12
 
-        val concForVolume = remember(concFromSection, manualConcFlag, dosing.recommendedConcMgPerMl, ampMg, ampMl, needs10MlRule) {
+        val concForVolume = remember(
+            concFromSection, manualConcFlag, dosing.recommendedConcMgPerMl, ampMg, ampMl, needs10MlRule
+        ) {
             if (manualConcFlag) {
-                if (needs10MlRule && ampMg != null) {
-                    ampMg!! / 10.0
-                } else {
-                    concFromSection
-                }
+                if (needs10MlRule && ampMg != null) ampMg!! / 10.0 else concFromSection
             } else {
                 dosing.recommendedConcMgPerMl ?: concFromSection
             }
         }
-
         val volumeMl = remember(dosing.mg, concForVolume) { computeVolumeMl(dosing.mg, concForVolume) }
 
         Card(Modifier.fillMaxWidth()) {
@@ -202,11 +210,12 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
                 Text("Berechnung", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(Spacing.sm))
 
-                LabelValueBlock(
-                    rows = listOf(
-                        "Dosierung" to (dosing.mg?.let { "${format2(it)} mg" } ?: "—"),
-                        "Volumen" to (volumeMl?.let { "${format2(it)} ml" } ?: "—")
-                    )
+                val doseText = dosing.mg?.let { "${format2(it)} mg" } ?: "—"
+                val volText = volumeMl?.let { "${format2(it)} ml" } ?: "—"
+
+                CalcTable(
+                    left = listOf("Dosierung" to doseText, "Lösung" to "—"),
+                    right = listOf("Volumen" to volText, "Gesamt" to "—")
                 )
 
                 Spacer(Modifier.height(Spacing.sm))
@@ -248,19 +257,84 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
 }
 
 @Composable
-private fun LabelValueBlock(rows: List<Pair<String, String>>) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-        Column(modifier = Modifier.width(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
-            rows.forEachIndexed { index, (label, _) ->
-                Text("$label:", style = MaterialTheme.typography.bodyLarge)
-                if (index != rows.lastIndex) Spacer(Modifier.height(4.dp))
+private fun RouteSection(
+    routes: List<String>,
+    selected: String,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = TintE6E0E9),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Column(Modifier.padding(Spacing.lg)) {
+            Text("Applikationsart", style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(Spacing.xs))
+            CompactDropdownField(
+                selectedText = selected,
+                options = routes,
+                onSelect = onSelect,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+@Composable
+private fun CalcTable(
+    left: List<Pair<String, String>>,
+    right: List<Pair<String, String>>
+) {
+    Row(Modifier.fillMaxWidth()) {
+        // Linke Hälfte (Labels und Werte in einer Flucht)
+        Row(Modifier.weight(1f)) {
+            Column(modifier = Modifier.width(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
+                left.forEachIndexed { i, (label, _) ->
+                    Text("$label:", style = MaterialTheme.typography.bodyLarge)
+                    if (i != left.lastIndex) Spacer(Modifier.height(4.dp))
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                left.forEachIndexed { i, (_, value) ->
+                    Text(
+                        value,
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                    if (i != left.lastIndex) Spacer(Modifier.height(4.dp))
+                }
             }
         }
-        Spacer(Modifier.width(8.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            rows.forEachIndexed { index, (_, value) ->
-                Text(value, style = MaterialTheme.typography.bodyLarge)
-                if (index != rows.lastIndex) Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.width(Spacing.sm))
+        // Rechte Hälfte (rechtsbündig, Labels und Werte jeweils in einer Flucht)
+        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End) {
+            Column(modifier = Modifier.width(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
+                right.forEachIndexed { i, (label, _) ->
+                    Text(
+                        "$label:",
+                        style = MaterialTheme.typography.bodyLarge,
+                        textAlign = TextAlign.End,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (i != right.lastIndex) Spacer(Modifier.height(4.dp))
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            Column(modifier = Modifier.width(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
+                right.forEachIndexed { i, (_, value) ->
+                    Text(
+                        value,
+                        style = MaterialTheme.typography.bodyLarge,
+                        textAlign = TextAlign.End,
+                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                    if (i != right.lastIndex) Spacer(Modifier.height(4.dp))
+                }
             }
         }
     }
@@ -320,7 +394,8 @@ private fun InfoTabsRow(activeTab: InfoTab, onChange: (InfoTab) -> Unit) {
 @Composable
 private fun AmpouleConcentrationSection(
     medication: String,
-    onStateChanged: (concMgPerMl: Double?, manual: Boolean, mgAmpoule: Double?, mlAmpoule: Double?) -> Unit
+    onStateChanged: (concMgPerMl: Double?, manual: Boolean, mgAmpoule: Double?, mlAmpoule: Double?) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val med = remember(medication) { MedicationRepository.getMedicationByName(medication) }
     val defaultText = med?.defaultConcentration?.display ?: "—"
@@ -336,14 +411,16 @@ private fun AmpouleConcentrationSection(
     }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = TintE6E0E9),
         shape = MaterialTheme.shapes.medium
     ) {
         Column(Modifier.padding(Spacing.lg)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Ampullenkonzentration", style = MaterialTheme.typography.bodySmall)
-                Spacer(Modifier.weight(1f))
+            // Label oben an den Rand
+            Text("Ampullenkonzentration", style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(Spacing.xs))
+            // Schalter darunter
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Manuell", style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.width(8.dp))
                 Switch(checked = manual, onCheckedChange = { manual = it })
@@ -513,7 +590,9 @@ private fun estimateWeightKg(years: Int, months: Int): Double {
 @Composable
 private fun HeaderRow(onMedicationsClick: () -> Unit, onMenuClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(vertical = Spacing.sm),
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = Spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
