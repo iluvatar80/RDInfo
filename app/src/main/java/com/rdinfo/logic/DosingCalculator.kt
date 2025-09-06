@@ -1,60 +1,138 @@
-// Zielpfad: app/src/main/java/com/rdinfo/logic/DosingCalculator.kt
-// Saubere Minimalversion – Logik liest ausschließlich Regeln aus dem MedicationRepository
-
+// app/src/main/java/com/rdinfo/logic/DosingCalculator.kt
 package com.rdinfo.logic
 
-import com.rdinfo.data.MedicationRepository
+import android.content.Context
+import com.rdinfo.data.model.AmpouleStrength
+import java.text.NumberFormat
+import java.util.Locale
 
-data class DosingResult(
-    val mg: Double?,
-    val hint: String,
-    val recommendedConcMgPerMl: Double?
-)
-
+/**
+ * Kompatibilitäts-Fassade: alter Name (DosingCalculator), neue regelgetriebene Engine.
+ *
+ * Ziel: MainActivity kann unverändert weiter `DosingCalculator` verwenden.
+ * Intern wird auf RuleDosingService/RuleDosingCalculator delegiert.
+ */
 object DosingCalculator {
-    fun compute(
-        medicationName: String,
-        useCaseLabel: String,
+
+    // --- rohe Werte (Zahlen) --------------------------------------------------------------
+    data class RawResult(
+        val ok: Boolean,
+        val error: String? = null,
+        val doseMg: Double? = null,
+        val concentrationMgPerMl: Double? = null,
+        val volumeMl: Double? = null,
+        val solutionText: String? = null,
+        val totalVolumeMl: Double? = null,
+        val hint: String? = null
+    )
+
+    fun calculateRaw(
+        context: Context,
+        medicationId: String,
+        useCaseId: String,
+        routeOrNull: String?,
         ageYears: Int,
-        weightKg: Double
-    ): DosingResult {
-        val rule = MedicationRepository.findBestDosingRule(
-            medicationName = medicationName,
-            useCaseLabelOrKey = useCaseLabel,
-            ageYears = ageYears,
-            weightKg = weightKg
-        ) ?: return DosingResult(
-            mg = null,
-            hint = "Keine Dosisregel für $useCaseLabel bei $medicationName hinterlegt.",
-            recommendedConcMgPerMl = null
+        ageMonthsRemainder: Int,
+        weightKg: Double?,
+        manualAmpMg: Double?,
+        manualAmpMl: Double?
+    ): RawResult {
+        val ageMonths = (ageYears * 12) + ageMonthsRemainder
+        val manualAmp = if (manualAmpMg != null && manualAmpMl != null) {
+            AmpouleStrength(manualAmpMg, manualAmpMl)
+        } else null
+
+        val res = RuleDosingService.calculate(
+            context = context,
+            medicationId = medicationId,
+            useCaseId = useCaseId,
+            routeOrNull = routeOrNull,
+            ageMonths = ageMonths,
+            weightKg = weightKg,
+            manualAmpoule = manualAmp
         )
 
-        val baseMg = when {
-            rule.fixedDoseMg != null -> rule.fixedDoseMg
-            rule.doseMgPerKg != null -> rule.doseMgPerKg * weightKg
-            else -> null
-        }
-        val mg = baseMg?.let { if (rule.maxDoseMg != null) kotlin.math.min(it, rule.maxDoseMg) else it }
+        if (!res.ok) return RawResult(false, error = res.error)
 
-        val hintPrefix = rule.route?.let { "$it: " } ?: ""
-        val hint = (hintPrefix + (rule.note ?: "")).ifBlank { "—" }
-
-        return DosingResult(
-            mg = mg,
-            hint = hint,
-            recommendedConcMgPerMl = rule.recommendedConcMgPerMl
+        return RawResult(
+            ok = true,
+            doseMg = res.doseMg,
+            concentrationMgPerMl = res.concentrationMgPerMl,
+            volumeMl = res.volumeMl,
+            solutionText = res.solutionText,
+            totalVolumeMl = res.totalVolumeMl,
+            hint = res.ruleHint
         )
     }
-}
 
-fun computeDoseFor(
-    medication: String,
-    useCase: String,
-    weightKg: Double,
-    ageYears: Int
-): DosingResult = DosingCalculator.compute(medication, useCase, ageYears, weightKg)
+    // --- formatierte Werte (für UI) -------------------------------------------------------
+    data class UiResult(
+        val ok: Boolean,
+        val error: String? = null,
+        val doseMg: String? = null,
+        val concentration: String? = null,
+        val volumeMl: String? = null,
+        val solution: String? = null,
+        val total: String? = null,
+        val hint: String? = null
+    )
 
-fun computeVolumeMl(doseMg: Double?, concentrationMgPerMl: Double?): Double? {
-    if (doseMg == null || concentrationMgPerMl == null || concentrationMgPerMl <= 0.0) return null
-    return doseMg / concentrationMgPerMl
+    private val localeDE: Locale = Locale.GERMANY
+    private const val NBSP = " "
+
+    private fun fmt(value: Double, minFrac: Int = 0, maxFrac: Int = 2): String {
+        val nf = NumberFormat.getNumberInstance(localeDE).apply {
+            minimumFractionDigits = minFrac
+            maximumFractionDigits = maxFrac
+        }
+        return nf.format(value)
+    }
+
+    private fun valueUnit(value: String, unit: String): String = "$value$NBSP$unit"
+
+    fun calculateUi(
+        context: Context,
+        medicationId: String,
+        useCaseId: String,
+        routeOrNull: String?,
+        ageYears: Int,
+        ageMonthsRemainder: Int,
+        weightKg: Double?,
+        manualAmpMg: Double?,
+        manualAmpMl: Double?
+    ): UiResult {
+        val raw = calculateRaw(
+            context,
+            medicationId,
+            useCaseId,
+            routeOrNull,
+            ageYears,
+            ageMonthsRemainder,
+            weightKg,
+            manualAmpMg,
+            manualAmpMl
+        )
+        if (!raw.ok) return UiResult(false, error = raw.error)
+
+        val doseStr = raw.doseMg?.let { valueUnit(fmt(it, maxFrac = 2), "mg") }
+        val concStr = raw.concentrationMgPerMl?.let { valueUnit(fmt(it, maxFrac = 2), "mg/ml") }
+        val volStr = raw.volumeMl?.let { valueUnit(fmt(it, maxFrac = 2), "ml") }
+        val totalStr = raw.totalVolumeMl?.let { valueUnit(fmt(it, maxFrac = 1), "ml") }
+        val solution = when {
+            raw.solutionText != null && totalStr != null -> "${raw.solutionText} (auf $totalStr)"
+            raw.solutionText != null -> raw.solutionText
+            totalStr != null -> totalStr
+            else -> null
+        }
+
+        return UiResult(
+            ok = true,
+            doseMg = doseStr,
+            concentration = concStr,
+            volumeMl = volStr,
+            solution = solution,
+            total = totalStr,
+            hint = raw.hint
+        )
+    }
 }

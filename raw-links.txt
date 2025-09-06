@@ -13,9 +13,14 @@ app/.gitignore
 app/build.gradle.kts
 app/proguard-rules.pro
 app/src/main/AndroidManifest.xml
+app/src/main/assets/medications.json
 app/src/main/java/com/rdinfo/MainActivity.kt
 app/src/main/java/com/rdinfo/data/MedicationRepository.kt
+app/src/main/java/com/rdinfo/data/model/MedicationModels.kt
 app/src/main/java/com/rdinfo/logic/DosingCalculator.kt
+app/src/main/java/com/rdinfo/logic/RuleDosingCalculator.kt
+app/src/main/java/com/rdinfo/logic/RuleDosingService.kt
+app/src/main/java/com/rdinfo/logic/RuleDosingUiAdapter.kt
 app/src/main/java/com/rdinfo/ui/theme/Color.kt
 app/src/main/java/com/rdinfo/ui/theme/Design.kt
 app/src/main/java/com/rdinfo/ui/theme/Theme.kt
