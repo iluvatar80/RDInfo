@@ -1,119 +1,107 @@
-// app/src/main/java/com/rdinfo/CompatAliases.kt
-package com.rdinfo
+// app/src/main/java/com/rdinfo/data/model/MedicationModels.kt
+package com.rdinfo.data.model
 
-import android.content.Context
+/**
+ * Zentrale, regeltreibende Datenmodelle für RDInfo.
+ * Diese Datei wird von Repository/Loader und vom RuleDosingCalculator verwendet.
+ */
 
-// -----------------------------------------------------------------------------
-//  Minimaler, *autarker* Kompatibilitäts-Layer nur für MainActivity
-//  (keine Abhängigkeit zu anderen Dateien) – damit der Build wieder läuft.
-// -----------------------------------------------------------------------------
+// --- Stammdaten ---------------------------------------------------------------------------
 
-enum class MedicationInfoSections { Indication, Contraindication, Effect, SideEffect }
-
-data class Medication(val id: String, val name: String)
-
-data class UseCase(val id: String, val name: String)
-
-data class InfoTexts(
-    val indication: String = "",
-    val contraindication: String = "",
-    val effect: String = "",
-    val sideEffect: String = ""
+data class Medication(
+    val id: String,
+    val name: String,
+    val ampoule: AmpouleStrength,
+    val useCases: List<UseCase>,
+    val info: InfoTexts? = null,
+    val notes: String? = null,
+    val version: Int = 1
 )
 
-object MedicationRepository {
-    fun listMedications(@Suppress("UNUSED_PARAMETER") context: Context): List<Medication> =
-        listOf(Medication(id = "adrenalin", name = "Adrenalin"))
+data class AmpouleStrength(
+    val mg: Double,
+    val ml: Double
+)
 
-    fun getMedicationById(@Suppress("UNUSED_PARAMETER") context: Context, id: String): Medication? =
-        listMedications(context).firstOrNull { it.id == id }
+data class UseCase(
+    val id: String,
+    val name: String,
+    val routes: List<RouteSpec>,
+    val defaultRoute: String? = null,
+    val info: InfoTexts? = null,
+    val notes: String? = null
+)
 
-    fun useCasesFor(@Suppress("UNUSED_PARAMETER") context: Context, medicationId: String): List<UseCase> =
-        listOf(
-            UseCase(id = "rea", name = "Reanimation"),
-            UseCase(id = "ana", name = "Anaphylaxie")
-        )
+data class RouteSpec(
+    val route: String,
+    val rules: List<DosingRule>,
+    val notes: String? = null
+)
 
-    fun routesFor(
-        @Suppress("UNUSED_PARAMETER") context: Context,
-        @Suppress("UNUSED_PARAMETER") medicationId: String,
-        useCaseId: String
-    ): List<String> = when (useCaseId) {
-        "rea" -> listOf("i.v.")
-        "ana" -> listOf("i.m.", "i.v.")
-        else -> emptyList()
-    }
+// --- Regeln ------------------------------------------------------------------------------
 
-    fun infoTextsFor(@Suppress("UNUSED_PARAMETER") context: Context, @Suppress("UNUSED_PARAMETER") medicationId: String): InfoTexts =
-        InfoTexts(
-            indication = "Akute Reanimation / Anaphylaxie",
-            contraindication = "Keine bei vitaler Indikation",
-            effect = "α-/β-adrenerge Wirkung",
-            sideEffect = "Tachykardie, Hypertonie, Tremor"
-        )
-}
+data class DosingRule(
+    val id: String? = null,
+    val priority: Int = 0,
+    val age: AgeRange? = null,
+    val weight: WeightRange? = null,
+    val calc: DoseCalc,
+    val dilution: Dilution? = null,
+    val conditions: Conditions? = null,
+    val hint: String? = null,
+    val rounding: Rounding? = null,
+    val repeats: Repetition? = null,
+    val maxCumulativeMgPerEvent: Double? = null
+)
 
-// Einheit für alte UI-Stellen
-const val mg: String = "mg"
+data class AgeRange(
+    val minMonths: Int? = null,
+    val maxMonthsExclusive: Int? = null
+)
 
-// -------------------------------------------------------------
-//  Legacy-Helper mit sehr einfacher Logik (kompilierbar/robust)
-// -------------------------------------------------------------
+data class WeightRange(
+    val minKg: Double? = null,
+    val maxKgExclusive: Double? = null
+)
 
-fun recommendedConcMgPerMl(
-    @Suppress("UNUSED_PARAMETER") context: Context,
-    medicationId: String,
-    @Suppress("UNUSED_PARAMETER") useCaseId: String?,
-    @Suppress("UNUSED_PARAMETER") routeOrNull: String?,
-    @Suppress("UNUSED_PARAMETER") ageYears: Int?,
-    @Suppress("UNUSED_PARAMETER") ageMonthsRemainder: Int?,
-    manualAmpMg: Double?,
-    manualAmpMl: Double?
-): Double? {
-    // Wenn manuelle Ampulle gesetzt → deren mg/ml
-    if (manualAmpMg != null && manualAmpMl != null && manualAmpMl > 0.0) return manualAmpMg / manualAmpMl
-    // Fallback: Standard-Ampulle Adrenalin 1 mg / 1 ml
-    return if (medicationId == "adrenalin") 1.0 else null
-}
+/**
+ * Dosisberechnung: entweder perKilogramm (mgPerKg) oder fixed (fixedMg).
+ * minMg/maxMg können die berechnete Dosis clampen.
+ */
+data class DoseCalc(
+    val type: String,           // "perKg" | "fixed"
+    val mgPerKg: Double? = null,
+    val fixedMg: Double? = null,
+    val minMg: Double? = null,
+    val maxMg: Double? = null
+)
 
-fun computeDoseFor(
-    @Suppress("UNUSED_PARAMETER") context: Context,
-    medicationId: String,
-    useCaseId: String,
-    @Suppress("UNUSED_PARAMETER") routeOrNull: String?,
-    ageYears: Int,
-    @Suppress("UNUSED_PARAMETER") ageMonthsRemainder: Int,
-    weightKg: Double?,
-    @Suppress("UNUSED_PARAMETER") manualAmpMg: Double?,
-    @Suppress("UNUSED_PARAMETER") manualAmpMl: Double?
-): Double? {
-    if (medicationId != "adrenalin") return null
-    return when (useCaseId) {
-        "rea" -> if (ageYears < 12) (weightKg ?: return null) * 0.01 else 1.0
-        "ana" -> (weightKg ?: return null) * 0.01
-        else -> null
-    }
-}
+data class Dilution(
+    val solutionText: String? = null,
+    val totalVolumeMl: Double? = null
+)
 
-fun computeVolumeMl(
-    context: Context,
-    medicationId: String,
-    useCaseId: String,
-    routeOrNull: String?,
-    ageYears: Int,
-    ageMonthsRemainder: Int,
-    weightKg: Double?,
-    manualAmpMg: Double?,
-    manualAmpMl: Double?
-): Double? {
-    val dose = computeDoseFor(context, medicationId, useCaseId, routeOrNull, ageYears, ageMonthsRemainder, weightKg, manualAmpMg, manualAmpMl)
-        ?: return null
-    val conc = recommendedConcMgPerMl(context, medicationId, useCaseId, routeOrNull, ageYears, ageMonthsRemainder, manualAmpMg, manualAmpMl)
-        ?: return null
-    return dose / conc
-}
+data class Conditions(
+    val requiresManualAmpoule: Boolean? = null
+)
 
-fun defaultConcentration(
-    @Suppress("UNUSED_PARAMETER") context: Context,
-    medicationId: String
-): Double? = if (medicationId == "adrenalin") 1.0 else null
+data class Rounding(
+    val mgStep: Double? = null,
+    val mlStep: Double? = null,
+    val showTrailingZeros: Boolean? = null
+)
+
+data class Repetition(
+    val repeatAllowed: Boolean? = null,
+    val minIntervalMinutes: Int? = null,
+    val maxRepeats: Int? = null
+)
+
+// --- Info-Texte --------------------------------------------------------------------------
+
+data class InfoTexts(
+    val indication: String? = null,
+    val contraindication: String? = null,
+    val effect: String? = null,
+    val sideEffect: String? = null
+)
