@@ -1,3 +1,7 @@
+// ================================
+// File: app/src/main/java/com/rdinfo/MainActivity.kt
+// (Unverändert in der Optik – inkl. fixen Imports)
+// ================================
 package com.rdinfo
 
 import android.os.Bundle
@@ -359,3 +363,4 @@ fun CompactSlider(
         }
     }
 }
+

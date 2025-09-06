@@ -1,149 +1,73 @@
-// app/src/main/java/com/rdinfo/data/MedicationAssetRepository.kt
+// ========================================================================
+// File: app/src/main/java/com/rdinfo/data/MedicationRepository.kt
+// (Neu erstellt, falls im Projekt referenziert – liest optional aus Assets)
+// ========================================================================
 package com.rdinfo.data
 
 import android.content.Context
-import android.util.Log
-import com.rdinfo.data.model.*
 import org.json.JSONArray
 import org.json.JSONObject
 
+/** Leichtgewichtiger Datensatz, bewusst generisch, um Konflikte zu vermeiden. */
+data class MedicationRecord(
+    val id: String,
+    val name: String,
+    val strengths: List<Double> = emptyList(),
+    val routes: List<String> = emptyList()
+)
+
+interface MedicationRepository {
+    fun list(): List<MedicationRecord>
+    fun findByName(name: String): MedicationRecord? = list().firstOrNull { it.name.equals(name, true) }
+    fun findById(id: String): MedicationRecord? = list().firstOrNull { it.id == id }
+}
+
 /**
- * Liest regelgetriebene Medikamentedaten aus assets/medications.json
- * und mappt sie auf die Kotlin-Modelle (ohne externe JSON-Library).
+ * Implementierung, die `assets/medications.json` lädt. Strukturtolerant.
+ * Falls Parsing fehlschlägt, gibt sie eine leere Liste zurück (keine Crashes).
  */
-object MedicationAssetRepository {
-    private const val TAG = "MedicationAssetRepo"
+class MedicationAssetRepository(private val context: Context) : MedicationRepository {
+    override fun list(): List<MedicationRecord> = runCatching {
+        val json = context.assets.open("medications.json").bufferedReader().use { it.readText() }
+        parse(json)
+    }.getOrElse { emptyList() }
 
-    /**
-     * Lädt und parst die Medikamentenliste aus den App-Assets.
-     * @param assetName Standard: "medications.json"
-     */
-    fun load(context: Context, assetName: String = "medications.json"): List<Medication> {
-        val json = readAsset(context, assetName)
-        return try {
-            parseMedications(json)
-        } catch (t: Throwable) {
-            Log.e(TAG, "Parsing medications failed", t)
-            emptyList()
+    private fun parse(text: String): List<MedicationRecord> {
+        val trimmed = text.trim()
+        val arr: JSONArray = when {
+            trimmed.startsWith("[") -> JSONArray(trimmed)
+            trimmed.startsWith("{") -> {
+                val root = JSONObject(trimmed)
+                // unterstützt sowohl {"medications":[..]} als auch andere Keys
+                val key = root.keys().asSequence().firstOrNull { it.equals("medications", true) } ?: return emptyList()
+                root.getJSONArray(key)
+            }
+            else -> return emptyList()
+        }
+        return (0 until arr.length()).mapNotNull { idx ->
+            val o = arr.optJSONObject(idx) ?: return@mapNotNull null
+            val id = o.optString("id", o.optString("code", o.optString("name", "")))
+            val name = o.optString("name", id)
+            val strengths = when {
+                o.has("strengths") -> o.optJSONArray("strengths")?.toDoubleList() ?: emptyList()
+                o.has("concentrations") -> o.optJSONArray("concentrations")?.toDoubleList() ?: emptyList()
+                else -> emptyList()
+            }
+            val routes = when {
+                o.has("routes") -> o.optJSONArray("routes")?.toStringList() ?: emptyList()
+                o.has("applications") -> o.optJSONArray("applications")?.toStringList() ?: emptyList()
+                else -> emptyList()
+            }
+            MedicationRecord(id = id.ifBlank { name }, name = name, strengths = strengths, routes = routes)
         }
     }
+}
 
-    private fun readAsset(context: Context, assetName: String): String =
-        context.assets.open(assetName).bufferedReader(Charsets.UTF_8).use { it.readText() }
+// kleine JSON‑Hilfen
+private fun JSONArray.toDoubleList(): List<Double> = buildList(length()) {
+    for (i in 0 until length()) add(this@toDoubleList.optDouble(i))
+}
 
-    // --- Parsing ---------------------------------------------------------------------------
-
-    private fun parseMedications(json: String): List<Medication> {
-        val root = JSONObject(json)
-        val meds = root.optJSONArray("medications") ?: JSONArray()
-        return meds.mapObjects { medObj ->
-            Medication(
-                id = medObj.getString("id"),
-                name = medObj.getString("name"),
-                ampoule = medObj.getJSONObject("ampoule").let { a ->
-                    AmpouleStrength(
-                        mg = a.getDouble("mg"),
-                        ml = a.getDouble("ml"),
-                    )
-                },
-                useCases = medObj.optJSONArray("useCases").mapObjects { ucObj ->
-                    UseCase(
-                        id = ucObj.getString("id"),
-                        name = ucObj.getString("name"),
-                        routes = ucObj.optJSONArray("routes").mapObjects { rObj ->
-                            RouteSpec(
-                                route = rObj.getString("route"),
-                                rules = rObj.optJSONArray("rules").mapObjects { ruleObj ->
-                                    DosingRule(
-                                        id = ruleObj.optStringOrNull("id"),
-                                        priority = ruleObj.optInt("priority", 0),
-                                        age = ruleObj.optJSONObjectOrNull("age")?.let { ageObj ->
-                                            AgeRange(
-                                                minMonths = ageObj.optIntOrNull("minMonths"),
-                                                maxMonthsExclusive = ageObj.optIntOrNull("maxMonthsExclusive"),
-                                            )
-                                        },
-                                        weight = ruleObj.optJSONObjectOrNull("weight")?.let { wObj ->
-                                            WeightRange(
-                                                minKg = wObj.optDoubleOrNull("minKg"),
-                                                maxKgExclusive = wObj.optDoubleOrNull("maxKgExclusive"),
-                                            )
-                                        },
-                                        calc = ruleObj.getJSONObject("calc").let { cObj ->
-                                            DoseCalc(
-                                                type = cObj.getString("type"),
-                                                mgPerKg = cObj.optDoubleOrNull("mgPerKg"),
-                                                fixedMg = cObj.optDoubleOrNull("fixedMg"),
-                                                minMg = cObj.optDoubleOrNull("minMg"),
-                                                maxMg = cObj.optDoubleOrNull("maxMg"),
-                                            )
-                                        },
-                                        dilution = ruleObj.optJSONObjectOrNull("dilution")?.let { dObj ->
-                                            Dilution(
-                                                solutionText = dObj.optStringOrNull("solutionText"),
-                                                totalVolumeMl = dObj.optDoubleOrNull("totalVolumeMl"),
-                                            )
-                                        },
-                                        conditions = ruleObj.optJSONObjectOrNull("conditions")?.let { condObj ->
-                                            Conditions(
-                                                requiresManualAmpoule = condObj.optBooleanOrNull("requiresManualAmpoule"),
-                                            )
-                                        },
-                                        hint = ruleObj.optStringOrNull("hint"),
-                                        rounding = ruleObj.optJSONObjectOrNull("rounding")?.let { rndObj ->
-                                            Rounding(
-                                                mgStep = rndObj.optDoubleOrNull("mgStep"),
-                                                mlStep = rndObj.optDoubleOrNull("mlStep"),
-                                                showTrailingZeros = rndObj.optBooleanOrNull("showTrailingZeros"),
-                                            )
-                                        },
-                                        repeats = ruleObj.optJSONObjectOrNull("repeats")?.let { repObj ->
-                                            Repetition(
-                                                repeatAllowed = repObj.optBooleanOrNull("repeatAllowed"),
-                                                minIntervalMinutes = repObj.optIntOrNull("minIntervalMinutes"),
-                                                maxRepeats = repObj.optIntOrNull("maxRepeats"),
-                                            )
-                                        },
-                                        maxCumulativeMgPerEvent = ruleObj.optDoubleOrNull("maxCumulativeMgPerEvent"),
-                                    )
-                                },
-                                notes = rObj.optStringOrNull("notes")
-                            )
-                        },
-                        defaultRoute = ucObj.optStringOrNull("defaultRoute"),
-                        info = ucObj.optJSONObjectOrNull("info")?.toInfoTexts(),
-                        notes = ucObj.optStringOrNull("notes"),
-                    )
-                },
-                info = medObj.optJSONObjectOrNull("info")?.toInfoTexts(),
-                notes = medObj.optStringOrNull("notes"),
-                version = medObj.optInt("version", 1)
-            )
-        }
-    }
-
-    // --- Helpers --------------------------------------------------------------------------
-
-    private fun JSONObject.toInfoTexts(): InfoTexts = InfoTexts(
-        indication = this.optStringOrNull("indication"),
-        contraindication = this.optStringOrNull("contraindication"),
-        effect = this.optStringOrNull("effect"),
-        sideEffect = this.optStringOrNull("sideEffect"),
-    )
-
-    private inline fun <T> JSONArray.mapObjects(transform: (JSONObject) -> T): List<T> {
-        val out = ArrayList<T>(length())
-        for (i in 0 until length()) {
-            val obj = optJSONObject(i) ?: continue
-            out += transform(obj)
-        }
-        return out
-    }
-
-    private fun JSONObject.optStringOrNull(key: String): String? = if (has(key) && !isNull(key)) optString(key) else null
-    private fun JSONObject.optDoubleOrNull(key: String): Double? = if (has(key) && !isNull(key)) optDouble(key) else null
-    private fun JSONObject.optIntOrNull(key: String): Int? = if (has(key) && !isNull(key)) optInt(key) else null
-    private fun JSONObject.optBooleanOrNull(key: String): Boolean? = if (has(key) && !isNull(key)) optBoolean(key) else null
-    private fun JSONObject.optJSONObjectOrNull(key: String): JSONObject? = if (has(key) && !isNull(key)) optJSONObject(key) else null
-    private fun JSONObject.optJSONArray(key: String): JSONArray = if (has(key) && !isNull(key)) getJSONArray(key) else JSONArray()
+private fun JSONArray.toStringList(): List<String> = buildList(length()) {
+    for (i in 0 until length()) add(this@toStringList.optString(i))
 }
