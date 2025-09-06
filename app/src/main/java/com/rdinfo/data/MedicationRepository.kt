@@ -5,20 +5,17 @@ import android.content.Context
 import com.rdinfo.data.model.*
 
 /**
- * Minimal, kompilierendes Repository **ohne** Abhängigkeit auf MedicationAssetRepository.
- *
- * Liefert eine feste Beispiel-Medikation (Adrenalin) mit zwei Use-Cases.
- * Ziel: die letzten "Unresolved reference: MedicationAssetRepository"-Fehler eliminieren.
- *
- * Du kannst dieses Stub später wieder durch den Asset-Loader ersetzen.
+ * Minimaler, eigenständiger Datenzugriff OHNE MedicationAssetRepository.
+ * Stellt Sample-Daten bereit und die Helper, die die UI benutzt.
  */
 object MedicationRepository {
 
+    // ------------------------------- Beispiel-Daten ---------------------------------------
     private val sample: List<Medication> by lazy {
         val adrenalin = Medication(
             id = "adrenalin",
             name = "Adrenalin",
-            ampoule = AmpouleStrength(mg = 1.0, ml = 1.0), // Standardampulle 1 mg / 1 ml
+            ampoule = AmpouleStrength(mg = 1.0, ml = 1.0),
             useCases = listOf(
                 // Reanimation
                 UseCase(
@@ -29,21 +26,21 @@ object MedicationRepository {
                         RouteSpec(
                             route = "i.v.",
                             rules = listOf(
-                                // < 12 J.: 0,01 mg/kg
+                                // < 12 J.: 0,01 mg/kg, auf 10 ml verdünnt
                                 DosingRule(
                                     priority = 2,
                                     age = AgeRange(minMonths = null, maxMonthsExclusive = 12 * 12),
                                     calc = DoseCalc(type = "perKg", mgPerKg = 0.01),
                                     dilution = Dilution(solutionText = "NaCl 0,9 %", totalVolumeMl = 10.0),
-                                    hint = "Kinder: 0,01 mg/kg i.v.; auf 10 ml mit NaCl 0,9 % verdünnen"
+                                    hint = "0,01 mg/kg i.v.; auf 10 ml NaCl 0,9 %"
                                 ),
-                                // ≥ 12 J.: 1 mg
+                                // ≥ 12 J.: 1 mg, auf 10 ml verdünnt
                                 DosingRule(
                                     priority = 1,
                                     age = AgeRange(minMonths = 12 * 12, maxMonthsExclusive = null),
                                     calc = DoseCalc(type = "fixed", fixedMg = 1.0),
                                     dilution = Dilution(solutionText = "NaCl 0,9 %", totalVolumeMl = 10.0),
-                                    hint = "Erw.: 1 mg i.v.; auf 10 ml mit NaCl 0,9 % verdünnen"
+                                    hint = "1 mg i.v.; auf 10 ml NaCl 0,9 %"
                                 )
                             )
                         )
@@ -58,7 +55,6 @@ object MedicationRepository {
                         RouteSpec(
                             route = "i.m.",
                             rules = listOf(
-                                // 0,01 mg/kg i.m. (ohne Verdünnung)
                                 DosingRule(
                                     priority = 1,
                                     calc = DoseCalc(type = "perKg", mgPerKg = 0.01, minMg = 0.05, maxMg = 0.5),
@@ -73,7 +69,7 @@ object MedicationRepository {
                                     priority = 1,
                                     calc = DoseCalc(type = "perKg", mgPerKg = 0.001, maxMg = 0.1),
                                     dilution = Dilution(solutionText = "NaCl 0,9 %", totalVolumeMl = 10.0),
-                                    hint = "i.v. Titration: 0,001 mg/kg (max 0,1 mg), verdünnt auf 10 ml"
+                                    hint = "0,001 mg/kg i.v. (max 0,1 mg), auf 10 ml"
                                 )
                             )
                         )
