@@ -9,8 +9,9 @@ import java.util.Locale
 /**
  * Kompatibilitäts-Fassade: alter Name (DosingCalculator), neue regelgetriebene Engine.
  *
- * Ziel: MainActivity kann unverändert weiter `DosingCalculator` verwenden.
- * Intern wird auf RuleDosingService/RuleDosingCalculator delegiert.
+ * Ziel: MainActivity kann unverändert weiter `DosingCalculator` bzw. die bisherigen
+ * Top-Level-Helfer (computeDoseFor, computeVolumeMl, recommendedConcMgPerMl, defaultConcentration)
+ * verwenden. Intern wird auf RuleDosingService/RuleDosingCalculator delegiert.
  */
 object DosingCalculator {
 
@@ -88,7 +89,7 @@ object DosingCalculator {
         return nf.format(value)
     }
 
-    private fun valueUnit(value: String, unit: String): String = "$value$NBSP$unit"
+    private fun valueUnit(value: String, unit: String): String = "\$value\$NBSP\$unit"
 
     fun calculateUi(
         context: Context,
@@ -119,7 +120,7 @@ object DosingCalculator {
         val volStr = raw.volumeMl?.let { valueUnit(fmt(it, maxFrac = 2), "ml") }
         val totalStr = raw.totalVolumeMl?.let { valueUnit(fmt(it, maxFrac = 1), "ml") }
         val solution = when {
-            raw.solutionText != null && totalStr != null -> "${raw.solutionText} (auf $totalStr)"
+            raw.solutionText != null && totalStr != null -> "\${raw.solutionText} (auf \$totalStr)"
             raw.solutionText != null -> raw.solutionText
             totalStr != null -> totalStr
             else -> null
@@ -135,4 +136,351 @@ object DosingCalculator {
             hint = raw.hint
         )
     }
+}
+
+// -----------------------------------------------------------------------------------------
+//  Legacy-Kompatibilität: Top-Level-Funktionen/Bezeichner mit alten Namen
+// -----------------------------------------------------------------------------------------
+
+/** Einheit-String, historisch in der UI verwendet. */
+const val mg: String = "mg"
+
+/**
+ * Gibt die berechnete Dosis (mg) zurück – Wrapper um die neue Engine.
+ */
+fun computeDoseFor(
+    context: Context,
+    medicationId: String,
+    useCaseId: String,
+    routeOrNull: String?,
+    ageYears: Int,
+    ageMonthsRemainder: Int,
+    weightKg: Double?,
+    manualAmpMg: Double?,
+    manualAmpMl: Double?
+): Double? = DosingCalculator.calculateRaw(
+    context,
+    medicationId,
+    useCaseId,
+    routeOrNull,
+    ageYears,
+    ageMonthsRemainder,
+    weightKg,
+    manualAmpMg,
+    manualAmpMl
+).doseMg
+
+/**
+ * Gibt das zu applizierende Volumen (ml) zurück – Wrapper um die neue Engine.
+ */
+fun computeVolumeMl(
+    context: Context,
+    medicationId: String,
+    useCaseId: String,
+    routeOrNull: String?,
+    ageYears: Int,
+    ageMonthsRemainder: Int,
+    weightKg: Double?,
+    manualAmpMg: Double?,
+    manualAmpMl: Double?
+): Double? = DosingCalculator.calculateRaw(
+    context,
+    medicationId,
+    useCaseId,
+    routeOrNull,
+    ageYears,
+    ageMonthsRemainder,
+    weightKg,
+    manualAmpMg,
+    manualAmpMl
+).volumeMl
+
+/**
+ * Empfohlene (effektive) Konzentration mg/ml (unter Berücksichtigung von Verdünnung/10 ml etc.).
+ * Wenn Use-Case/Route unbekannt sind, fällt auf die Standard-Ampulle zurück.
+ */
+fun recommendedConcMgPerMl(
+    context: Context,
+    medicationId: String,
+    useCaseId: String?,
+    routeOrNull: String?,
+    ageYears: Int?,
+    ageMonthsRemainder: Int?,
+    manualAmpMg: Double?,
+    manualAmpMl: Double?
+): Double? {
+    return if (useCaseId != null && ageYears != null && ageMonthsRemainder != null) {
+        DosingCalculator.calculateRaw(
+            context,
+            medicationId,
+            useCaseId,
+            routeOrNull,
+            ageYears,
+            ageMonthsRemainder,
+            weightKg = null,
+            manualAmpMg = manualAmpMg,
+            manualAmpMl = manualAmpMl
+        ).concentrationMgPerMl
+    } else {
+        // Fallback: Standard-Ampulle (ohne Verdünnung)
+        val med = RuleDosingService.getMedicationById(context, medicationId) ?: return null
+        val base = if (manualAmpMg != null && manualAmpMl != null) {
+            AmpouleStrength(manualAmpMg, manualAmpMl)
+        } else med.ampoule
+        if (base.ml == 0.0) null else base.mg / base.ml
+    }
+}
+
+/**
+ * Standard-Konzentration (mg/ml) aus der Ampulle – einfacher Helper für alte Aufrufe.
+ */
+fun defaultConcentration(
+    context: Context,
+    medicationId: String
+): Double? {
+    val med = RuleDosingService.getMedicationById(context, medicationId) ?: return null
+    return if (med.ampoule.ml == 0.0) null else med.ampoule.mg / med.ampoule.ml
+}
+// app/src/main/java/com/rdinfo/logic/DosingCalculator.kt
+package com.rdinfo.logic
+
+import android.content.Context
+import com.rdinfo.data.model.AmpouleStrength
+import java.text.NumberFormat
+import java.util.Locale
+
+/**
+ * Kompatibilitäts-Fassade: alter Name (DosingCalculator), neue regelgetriebene Engine.
+ *
+ * Ziel: MainActivity kann unverändert weiter `DosingCalculator` bzw. die bisherigen
+ * Top-Level-Helfer (computeDoseFor, computeVolumeMl, recommendedConcMgPerMl, defaultConcentration)
+ * verwenden. Intern wird auf RuleDosingService/RuleDosingCalculator delegiert.
+ */
+object DosingCalculator {
+
+    // --- rohe Werte (Zahlen) --------------------------------------------------------------
+    data class RawResult(
+        val ok: Boolean,
+        val error: String? = null,
+        val doseMg: Double? = null,
+        val concentrationMgPerMl: Double? = null,
+        val volumeMl: Double? = null,
+        val solutionText: String? = null,
+        val totalVolumeMl: Double? = null,
+        val hint: String? = null
+    )
+
+    fun calculateRaw(
+        context: Context,
+        medicationId: String,
+        useCaseId: String,
+        routeOrNull: String?,
+        ageYears: Int,
+        ageMonthsRemainder: Int,
+        weightKg: Double?,
+        manualAmpMg: Double?,
+        manualAmpMl: Double?
+    ): RawResult {
+        val ageMonths = (ageYears * 12) + ageMonthsRemainder
+        val manualAmp = if (manualAmpMg != null && manualAmpMl != null) {
+            AmpouleStrength(manualAmpMg, manualAmpMl)
+        } else null
+
+        val res = RuleDosingService.calculate(
+            context = context,
+            medicationId = medicationId,
+            useCaseId = useCaseId,
+            routeOrNull = routeOrNull,
+            ageMonths = ageMonths,
+            weightKg = weightKg,
+            manualAmpoule = manualAmp
+        )
+
+        if (!res.ok) return RawResult(false, error = res.error)
+
+        return RawResult(
+            ok = true,
+            doseMg = res.doseMg,
+            concentrationMgPerMl = res.concentrationMgPerMl,
+            volumeMl = res.volumeMl,
+            solutionText = res.solutionText,
+            totalVolumeMl = res.totalVolumeMl,
+            hint = res.ruleHint
+        )
+    }
+
+    // --- formatierte Werte (für UI) -------------------------------------------------------
+    data class UiResult(
+        val ok: Boolean,
+        val error: String? = null,
+        val doseMg: String? = null,
+        val concentration: String? = null,
+        val volumeMl: String? = null,
+        val solution: String? = null,
+        val total: String? = null,
+        val hint: String? = null
+    )
+
+    private val localeDE: Locale = Locale.GERMANY
+    private const val NBSP = " "
+
+    private fun fmt(value: Double, minFrac: Int = 0, maxFrac: Int = 2): String {
+        val nf = NumberFormat.getNumberInstance(localeDE).apply {
+            minimumFractionDigits = minFrac
+            maximumFractionDigits = maxFrac
+        }
+        return nf.format(value)
+    }
+
+    private fun valueUnit(value: String, unit: String): String = "\$value\$NBSP\$unit"
+
+    fun calculateUi(
+        context: Context,
+        medicationId: String,
+        useCaseId: String,
+        routeOrNull: String?,
+        ageYears: Int,
+        ageMonthsRemainder: Int,
+        weightKg: Double?,
+        manualAmpMg: Double?,
+        manualAmpMl: Double?
+    ): UiResult {
+        val raw = calculateRaw(
+            context,
+            medicationId,
+            useCaseId,
+            routeOrNull,
+            ageYears,
+            ageMonthsRemainder,
+            weightKg,
+            manualAmpMg,
+            manualAmpMl
+        )
+        if (!raw.ok) return UiResult(false, error = raw.error)
+
+        val doseStr = raw.doseMg?.let { valueUnit(fmt(it, maxFrac = 2), "mg") }
+        val concStr = raw.concentrationMgPerMl?.let { valueUnit(fmt(it, maxFrac = 2), "mg/ml") }
+        val volStr = raw.volumeMl?.let { valueUnit(fmt(it, maxFrac = 2), "ml") }
+        val totalStr = raw.totalVolumeMl?.let { valueUnit(fmt(it, maxFrac = 1), "ml") }
+        val solution = when {
+            raw.solutionText != null && totalStr != null -> "\${raw.solutionText} (auf \$totalStr)"
+            raw.solutionText != null -> raw.solutionText
+            totalStr != null -> totalStr
+            else -> null
+        }
+
+        return UiResult(
+            ok = true,
+            doseMg = doseStr,
+            concentration = concStr,
+            volumeMl = volStr,
+            solution = solution,
+            total = totalStr,
+            hint = raw.hint
+        )
+    }
+}
+
+// -----------------------------------------------------------------------------------------
+//  Legacy-Kompatibilität: Top-Level-Funktionen/Bezeichner mit alten Namen
+// -----------------------------------------------------------------------------------------
+
+/** Einheit-String, historisch in der UI verwendet. */
+const val mg: String = "mg"
+
+/**
+ * Gibt die berechnete Dosis (mg) zurück – Wrapper um die neue Engine.
+ */
+fun computeDoseFor(
+    context: Context,
+    medicationId: String,
+    useCaseId: String,
+    routeOrNull: String?,
+    ageYears: Int,
+    ageMonthsRemainder: Int,
+    weightKg: Double?,
+    manualAmpMg: Double?,
+    manualAmpMl: Double?
+): Double? = DosingCalculator.calculateRaw(
+    context,
+    medicationId,
+    useCaseId,
+    routeOrNull,
+    ageYears,
+    ageMonthsRemainder,
+    weightKg,
+    manualAmpMg,
+    manualAmpMl
+).doseMg
+
+/**
+ * Gibt das zu applizierende Volumen (ml) zurück – Wrapper um die neue Engine.
+ */
+fun computeVolumeMl(
+    context: Context,
+    medicationId: String,
+    useCaseId: String,
+    routeOrNull: String?,
+    ageYears: Int,
+    ageMonthsRemainder: Int,
+    weightKg: Double?,
+    manualAmpMg: Double?,
+    manualAmpMl: Double?
+): Double? = DosingCalculator.calculateRaw(
+    context,
+    medicationId,
+    useCaseId,
+    routeOrNull,
+    ageYears,
+    ageMonthsRemainder,
+    weightKg,
+    manualAmpMg,
+    manualAmpMl
+).volumeMl
+
+/**
+ * Empfohlene (effektive) Konzentration mg/ml (unter Berücksichtigung von Verdünnung/10 ml etc.).
+ * Wenn Use-Case/Route unbekannt sind, fällt auf die Standard-Ampulle zurück.
+ */
+fun recommendedConcMgPerMl(
+    context: Context,
+    medicationId: String,
+    useCaseId: String?,
+    routeOrNull: String?,
+    ageYears: Int?,
+    ageMonthsRemainder: Int?,
+    manualAmpMg: Double?,
+    manualAmpMl: Double?
+): Double? {
+    return if (useCaseId != null && ageYears != null && ageMonthsRemainder != null) {
+        DosingCalculator.calculateRaw(
+            context,
+            medicationId,
+            useCaseId,
+            routeOrNull,
+            ageYears,
+            ageMonthsRemainder,
+            weightKg = null,
+            manualAmpMg = manualAmpMg,
+            manualAmpMl = manualAmpMl
+        ).concentrationMgPerMl
+    } else {
+        // Fallback: Standard-Ampulle (ohne Verdünnung)
+        val med = RuleDosingService.getMedicationById(context, medicationId) ?: return null
+        val base = if (manualAmpMg != null && manualAmpMl != null) {
+            AmpouleStrength(manualAmpMg, manualAmpMl)
+        } else med.ampoule
+        if (base.ml == 0.0) null else base.mg / base.ml
+    }
+}
+
+/**
+ * Standard-Konzentration (mg/ml) aus der Ampulle – einfacher Helper für alte Aufrufe.
+ */
+fun defaultConcentration(
+    context: Context,
+    medicationId: String
+): Double? {
+    val med = RuleDosingService.getMedicationById(context, medicationId) ?: return null
+    return if (med.ampoule.ml == 0.0) null else med.ampoule.mg / med.ampoule.ml
 }
