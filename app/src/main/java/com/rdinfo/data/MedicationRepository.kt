@@ -2,99 +2,22 @@
 package com.rdinfo.data
 
 import android.content.Context
-import com.rdinfo.data.model.\*
+import com.rdinfo.data.model.*
+import org.json.JSONArray
+import org.json.JSONObject
 
-/\*\*
-
-* Minimaler, eigenständiger Datenzugriff OHNE MedicationAssetRepository.
-* Stellt Sample-Daten bereit und die Helper, die die UI benutzt.
-\*/
+/**
+ * UI-nahes Repository. Lädt Medikamente direkt aus assets/medications.json
+ * (ohne Abhängigkeit zu MedicationAssetRepository) und stellt Helper bereit.
+ */
 object MedicationRepository {
 
-    // ------------------------------- Beispiel-Daten ---------------------------------------
-    private val sample: List<Medication> by lazy {
-        val adrenalin = Medication(
-            id = "adrenalin",
-            name = "Adrenalin",
-            ampoule = AmpouleStrength(mg = 1.0, ml = 1.0),
-            useCases = listOf(
-                // Reanimation
-                UseCase(
-                    id = "rea",
-                    name = "Reanimation",
-                    defaultRoute = "i.v.",
-                    routes = listOf(
-                        RouteSpec(
-                            route = "i.v.",
-                            rules = listOf(
-                                // < 12 J.: 0,01 mg/kg, auf 10 ml verdünnt
-                                DosingRule(
-                                    priority = 2,
-                                    age = AgeRange(minMonths = null, maxMonthsExclusive = 12 \* 12),
-                                calc = DoseCalc(type = "perKg", mgPerKg = 0.01),
-                                dilution = Dilution(solutionText = "NaCl 0,9 %", totalVolumeMl = 10.0),
-                                hint = "0,01 mg/kg i.v.; auf 10 ml NaCl 0,9 %"
-                            ),
-                            // ≥ 12 J.: 1 mg, auf 10 ml verdünnt
-                            DosingRule(
-                                priority = 1,
-                                age = AgeRange(minMonths = 12 \* 12, maxMonthsExclusive = null),
-                            calc = DoseCalc(type = "fixed", fixedMg = 1.0),
-                            dilution = Dilution(solutionText = "NaCl 0,9 %", totalVolumeMl = 10.0),
-                            hint = "1 mg i.v.; auf 10 ml NaCl 0,9 %"
-                        )
-                    )
-                )
-            )
-        ),
-        // Anaphylaxie
-        UseCase(
-            id = "ana",
-            name = "Anaphylaxie",
-            defaultRoute = "i.m.",
-            routes = listOf(
-                RouteSpec(
-                    route = "i.m.",
-                    rules = listOf(
-                        DosingRule(
-                            priority = 1,
-                            calc = DoseCalc(type = "perKg", mgPerKg = 0.01, minMg = 0.05, maxMg = 0.5),
-                            hint = "0,01 mg/kg i.m. (min 0,05 mg / max 0,5 mg)"
-                        )
-                    )
-                ),
-                RouteSpec(
-                    route = "i.v.",
-                    rules = listOf(
-                        DosingRule(
-                            priority = 1,
-                            calc = DoseCalc(type = "perKg", mgPerKg = 0.001, maxMg = 0.1),
-                            dilution = Dilution(solutionText = "NaCl 0,9 %", totalVolumeMl = 10.0),
-                            hint = "0,001 mg/kg i.v. (max 0,1 mg), auf 10 ml"
-                        )
-                    )
-                )
-            )
-        )
-        ),
-        info = InfoTexts(
-            indication = "Reanimation, Anaphylaxie",
-            contraindication = "Keine bei vitaler Indikation",
-            effect = "α-/β-adrenerge Wirkung",
-            sideEffect = "Tachykardie, Hypertonie, Tremor"
-        ),
-        notes = null,
-        version = 1
-        )
-        listOf(adrenalin)
-    }
+    // -------------------------------- Public API -----------------------------------------
 
-    // ------------------------------- Public API -------------------------------------------
+    fun listMedications(context: Context): List<Medication> = loadFromAssets(context)
 
-    fun listMedications(@Suppress("UNUSED\_PARAMETER") context: Context): List<Medication> = sample
-
-    fun getMedicationById(@Suppress("UNUSED\_PARAMETER") context: Context, id: String): Medication? =
-        sample.firstOrNull { it.id == id }
+    fun getMedicationById(context: Context, id: String): Medication? =
+        loadFromAssets(context).firstOrNull { it.id == id }
 
     fun useCasesFor(context: Context, medicationId: String): List<UseCase> =
         getMedicationById(context, medicationId)?.useCases ?: emptyList()
@@ -107,7 +30,130 @@ object MedicationRepository {
 
     fun infoTextsFor(context: Context, medicationId: String): InfoTexts? =
         getMedicationById(context, medicationId)?.info
+
+    // -------------------------------- Loader ---------------------------------------------
+
+    private fun loadFromAssets(context: Context, assetName: String = "medications.json"): List<Medication> {
+        val json = context.assets.open(assetName).bufferedReader(Charsets.UTF_8).use { it.readText() }
+        return parseMedications(json)
+    }
+
+    // -------------------------------- Parsing --------------------------------------------
+
+    private fun parseMedications(json: String): List<Medication> {
+        val root = JSONObject(json)
+        val meds = root.optJSONArray("medications") ?: JSONArray()
+        return meds.mapObjects { medObj ->
+            Medication(
+                id = medObj.getString("id"),
+                name = medObj.getString("name"),
+                ampoule = medObj.getJSONObject("ampoule").let { a ->
+                    AmpouleStrength(
+                        mg = a.getDouble("mg"),
+                        ml = a.getDouble("ml"),
+                    )
+                },
+                useCases = medObj.optJSONArray("useCases").mapObjects { ucObj ->
+                    UseCase(
+                        id = ucObj.getString("id"),
+                        name = ucObj.getString("name"),
+                        routes = ucObj.optJSONArray("routes").mapObjects { rObj ->
+                            RouteSpec(
+                                route = rObj.getString("route"),
+                                rules = rObj.optJSONArray("rules").mapObjects { ruleObj ->
+                                    DosingRule(
+                                        id = ruleObj.optStringOrNull("id"),
+                                        priority = ruleObj.optInt("priority", 0),
+                                        age = ruleObj.optJSONObjectOrNull("age")?.let { ageObj ->
+                                            AgeRange(
+                                                minMonths = ageObj.optIntOrNull("minMonths"),
+                                                maxMonthsExclusive = ageObj.optIntOrNull("maxMonthsExclusive"),
+                                            )
+                                        },
+                                        weight = ruleObj.optJSONObjectOrNull("weight")?.let { wObj ->
+                                            WeightRange(
+                                                minKg = wObj.optDoubleOrNull("minKg"),
+                                                maxKgExclusive = wObj.optDoubleOrNull("maxKgExclusive"),
+                                            )
+                                        },
+                                        calc = ruleObj.getJSONObject("calc").let { cObj ->
+                                            DoseCalc(
+                                                type = cObj.getString("type"),
+                                                mgPerKg = cObj.optDoubleOrNull("mgPerKg"),
+                                                fixedMg = cObj.optDoubleOrNull("fixedMg"),
+                                                minMg = cObj.optDoubleOrNull("minMg"),
+                                                maxMg = cObj.optDoubleOrNull("maxMg"),
+                                            )
+                                        },
+                                        dilution = ruleObj.optJSONObjectOrNull("dilution")?.let { dObj ->
+                                            Dilution(
+                                                solutionText = dObj.optStringOrNull("solutionText"),
+                                                totalVolumeMl = dObj.optDoubleOrNull("totalVolumeMl"),
+                                            )
+                                        },
+                                        conditions = ruleObj.optJSONObjectOrNull("conditions")?.let { condObj ->
+                                            Conditions(
+                                                requiresManualAmpoule = condObj.optBooleanOrNull("requiresManualAmpoule"),
+                                            )
+                                        },
+                                        hint = ruleObj.optStringOrNull("hint"),
+                                        rounding = ruleObj.optJSONObjectOrNull("rounding")?.let { rndObj ->
+                                            Rounding(
+                                                mgStep = rndObj.optDoubleOrNull("mgStep"),
+                                                mlStep = rndObj.optDoubleOrNull("mlStep"),
+                                                showTrailingZeros = rndObj.optBooleanOrNull("showTrailingZeros"),
+                                            )
+                                        },
+                                        repeats = ruleObj.optJSONObjectOrNull("repeats")?.let { repObj ->
+                                            Repetition(
+                                                repeatAllowed = repObj.optBooleanOrNull("repeatAllowed"),
+                                                minIntervalMinutes = repObj.optIntOrNull("minIntervalMinutes"),
+                                                maxRepeats = repObj.optIntOrNull("maxRepeats"),
+                                            )
+                                        },
+                                        maxCumulativeMgPerEvent = ruleObj.optDoubleOrNull("maxCumulativeMgPerEvent"),
+                                    )
+                                },
+                                notes = rObj.optStringOrNull("notes")
+                            )
+                        },
+                        defaultRoute = ucObj.optStringOrNull("defaultRoute"),
+                        info = ucObj.optJSONObjectOrNull("info")?.toInfoTexts(),
+                        notes = ucObj.optStringOrNull("notes"),
+                    )
+                },
+                info = medObj.optJSONObjectOrNull("info")?.toInfoTexts(),
+                notes = medObj.optStringOrNull("notes"),
+                version = medObj.optInt("version", 1)
+            )
+        }
+    }
+
+    private fun JSONObject.toInfoTexts(): InfoTexts = InfoTexts(
+        indication = this.optStringOrNull("indication"),
+        contraindication = this.optStringOrNull("contraindication"),
+        effect = this.optStringOrNull("effect"),
+        sideEffect = this.optStringOrNull("sideEffect"),
+    )
+
+    // JSONArray helper
+    private inline fun <T> JSONArray.mapObjects(transform: (JSONObject) -> T): List<T> {
+        val out = ArrayList<T>(length())
+        for (i in 0 until length()) {
+            val obj = optJSONObject(i) ?: continue
+            out += transform(obj)
+        }
+        return out
+    }
+
+    // org.json safe accessors
+    private fun JSONObject.optStringOrNull(key: String): String? = if (has(key) && !isNull(key)) optString(key) else null
+    private fun JSONObject.optDoubleOrNull(key: String): Double? = if (has(key) && !isNull(key)) optDouble(key) else null
+    private fun JSONObject.optIntOrNull(key: String): Int? = if (has(key) && !isNull(key)) optInt(key) else null
+    private fun JSONObject.optBooleanOrNull(key: String): Boolean? = if (has(key) && !isNull(key)) optBoolean(key) else null
+    private fun JSONObject.optJSONObjectOrNull(key: String): JSONObject? = if (has(key) && !isNull(key)) optJSONObject(key) else null
+    private fun JSONObject.optJSONArray(key: String): JSONArray = if (has(key) && !isNull(key)) getJSONArray(key) else JSONArray()
 }
 
-/\*\* Enum für die Info-Tabs in der UI. \*/
+/** Enum für die Info-Tabs in der UI. */
 enum class MedicationInfoSections { Indication, Contraindication, Effect, SideEffect }
