@@ -14,6 +14,7 @@ app/build.gradle.kts
 app/proguard-rules.pro
 app/src/main/AndroidManifest.xml
 app/src/main/assets/medications.json
+app/src/main/java/com/rdinfo/CompatAliases.kt
 app/src/main/java/com/rdinfo/MainActivity.kt
 app/src/main/java/com/rdinfo/data/MedicationRepository.kt
 app/src/main/java/com/rdinfo/data/model/MedicationModels.kt
