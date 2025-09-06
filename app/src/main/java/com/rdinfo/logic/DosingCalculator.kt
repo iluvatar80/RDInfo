@@ -7,12 +7,12 @@ import java.text.NumberFormat
 import java.util.Locale
 
 /**
- * Regelgetriebener DosingCalculator (berechnet mg/ml/Volumen) –
- * nur noch als Fassade um RuleDosingService. KEINE Top‑Level‑Funktionen mehr hier.
+ * Minimaler, sauberer Wrapper um RuleDosingService.
+ * Entfernt frühere Import-/Doppeldefinitions-Probleme.
  */
 object DosingCalculator {
 
-    // --- rohe Werte (Zahlen) --------------------------------------------------------------
+    // --- rohe Werte ----------------------------------------------------------------------
     data class RawResult(
         val ok: Boolean,
         val error: String? = null,
@@ -21,7 +21,7 @@ object DosingCalculator {
         val volumeMl: Double? = null,
         val solutionText: String? = null,
         val totalVolumeMl: Double? = null,
-        val hint: String? = null
+        val hint: String? = null,
     )
 
     fun calculateRaw(
@@ -33,7 +33,7 @@ object DosingCalculator {
         ageMonthsRemainder: Int,
         weightKg: Double?,
         manualAmpMg: Double?,
-        manualAmpMl: Double?
+        manualAmpMl: Double?,
     ): RawResult {
         val ageMonths = (ageYears * 12) + ageMonthsRemainder
         val manualAmp = if (manualAmpMg != null && manualAmpMl != null) {
@@ -51,7 +51,6 @@ object DosingCalculator {
         )
 
         if (!res.ok) return RawResult(false, error = res.error)
-
         return RawResult(
             ok = true,
             doseMg = res.doseMg,
@@ -59,11 +58,11 @@ object DosingCalculator {
             volumeMl = res.volumeMl,
             solutionText = res.solutionText,
             totalVolumeMl = res.totalVolumeMl,
-            hint = res.ruleHint
+            hint = res.ruleHint,
         )
     }
 
-    // --- formatierte Werte (für UI) -------------------------------------------------------
+    // --- formatierte Werte ----------------------------------------------------------------
     data class UiResult(
         val ok: Boolean,
         val error: String? = null,
@@ -72,19 +71,17 @@ object DosingCalculator {
         val volumeMl: String? = null,
         val solution: String? = null,
         val total: String? = null,
-        val hint: String? = null
+        val hint: String? = null,
     )
 
     private val localeDE: Locale = Locale.GERMANY
     private const val NBSP = " "
 
-    private fun fmt(value: Double, minFrac: Int = 0, maxFrac: Int = 2): String {
-        val nf = NumberFormat.getNumberInstance(localeDE).apply {
+    private fun fmt(value: Double, minFrac: Int = 0, maxFrac: Int = 2): String =
+        NumberFormat.getNumberInstance(localeDE).apply {
             minimumFractionDigits = minFrac
             maximumFractionDigits = maxFrac
-        }
-        return nf.format(value)
-    }
+        }.format(value)
 
     private fun valueUnit(value: String, unit: String): String = "$value$NBSP$unit"
 
@@ -97,7 +94,7 @@ object DosingCalculator {
         ageMonthsRemainder: Int,
         weightKg: Double?,
         manualAmpMg: Double?,
-        manualAmpMl: Double?
+        manualAmpMl: Double?,
     ): UiResult {
         val raw = calculateRaw(
             context,
@@ -108,7 +105,7 @@ object DosingCalculator {
             ageMonthsRemainder,
             weightKg,
             manualAmpMg,
-            manualAmpMl
+            manualAmpMl,
         )
         if (!raw.ok) return UiResult(false, error = raw.error)
 
@@ -130,7 +127,7 @@ object DosingCalculator {
             volumeMl = volStr,
             solution = solution,
             total = totalStr,
-            hint = raw.hint
+            hint = raw.hint,
         )
     }
 }

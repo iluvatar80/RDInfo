@@ -2,63 +2,35 @@
 package com.rdinfo.logic
 
 import android.content.Context
-import com.rdinfo.data.MedicationAssetRepository
+import com.rdinfo.data.MedicationRepository
 import com.rdinfo.data.model.AmpouleStrength
+import com.rdinfo.data.model.Dilution
+import com.rdinfo.data.model.DoseCalc
+import com.rdinfo.data.model.DosingRule
 import com.rdinfo.data.model.Medication
+import kotlin.math.max
+import kotlin.math.min
 
 /**
- * Fassade für das regelgetriebene Dosieren:
- *  - Lädt & cached Medikamente aus assets/medications.json
- *  - Bietet einfache calculate(...)-Funktion für die UI
+ * Lädt Regeln über das Repository und führt die Berechnung aus.
+ * Keine UI-Formatierung – gibt nur Zahlen + optionale Texte zurück.
  */
 object RuleDosingService {
 
-    @Volatile
-    private var cached: List<Medication>? = null
-
-    fun getMedications(context: Context): List<Medication> {
-        val existing = cached
-        if (existing != null) return existing
-        val loaded = MedicationAssetRepository.load(context.applicationContext)
-        cached = loaded
-        return loaded
-    }
+    data class CalcResult(
+        val ok: Boolean,
+        val error: String? = null,
+        val doseMg: Double? = null,
+        val concentrationMgPerMl: Double? = null,
+        val volumeMl: Double? = null,
+        val solutionText: String? = null,
+        val totalVolumeMl: Double? = null,
+        val ruleHint: String? = null,
+    )
 
     fun getMedicationById(context: Context, id: String): Medication? =
-        getMedications(context).firstOrNull { it.id == id }
+        MedicationRepository.getMedicationById(context, id)
 
-    fun listUseCases(context: Context, medicationId: String): List<Pair<String, String>> =
-        getMedicationById(context, medicationId)
-            ?.useCases
-            ?.map { it.id to it.name }
-            ?: emptyList()
-
-    fun listRoutes(context: Context, medicationId: String, useCaseId: String): List<String> =
-        getMedicationById(context, medicationId)
-            ?.useCases?.firstOrNull { it.id == useCaseId }
-            ?.routes?.map { it.route }
-            ?: emptyList()
-
-    /**
-     * Wählt Route in folgender Reihenfolge aus:
-     * 1) exactMatch (falls vorhanden)
-     * 2) defaultRoute des Use-Cases
-     * 3) erste Route des Use-Cases
-     */
-    private fun pickRoute(med: Medication, useCaseId: String, preferred: String?): String? {
-        val uc = med.useCases.firstOrNull { it.id == useCaseId } ?: return null
-        val routes = uc.routes.map { it.route }
-        return when {
-            preferred != null && routes.contains(preferred) -> preferred
-            uc.defaultRoute != null && routes.contains(uc.defaultRoute) -> uc.defaultRoute
-            routes.isNotEmpty() -> routes.first()
-            else -> null
-        }
-    }
-
-    /**
-     * Haupt-Entry-Point für die UI: berechnet die Dosierung anhand der Regeln.
-     */
     fun calculate(
         context: Context,
         medicationId: String,
@@ -66,26 +38,96 @@ object RuleDosingService {
         routeOrNull: String?,
         ageMonths: Int,
         weightKg: Double?,
-        manualAmpoule: AmpouleStrength? = null
-    ): RuleDosingCalculator.Result {
+        manualAmpoule: AmpouleStrength?
+    ): CalcResult {
         val med = getMedicationById(context, medicationId)
-            ?: return RuleDosingCalculator.Result(false, "Medikament nicht gefunden: $medicationId")
+            ?: return CalcResult(false, error = "Medication not found")
 
-        val route = pickRoute(med, useCaseId, routeOrNull)
-            ?: return RuleDosingCalculator.Result(false, "Keine Route für Use-Case: $useCaseId")
+        val useCase = med.useCases.firstOrNull { it.id == useCaseId }
+            ?: return CalcResult(false, error = "Use-Case not found")
 
-        return RuleDosingCalculator.calculate(
-            RuleDosingCalculator.Input(
-                medication = med,
-                useCaseId = useCaseId,
-                route = route,
-                ageMonths = ageMonths,
-                weightKg = weightKg,
-                manualAmpoule = manualAmpoule
-            )
+        val routeSpec = (routeOrNull ?: useCase.defaultRoute)
+            ?.let { r -> useCase.routes.firstOrNull { it.route == r } }
+            ?: useCase.routes.firstOrNull()
+            ?: return CalcResult(false, error = "Route not found")
+
+        val rule = selectRule(routeSpec.rules, ageMonths, weightKg, manualAmpoule)
+            ?: return CalcResult(false, error = "No matching rule")
+
+        val dose = computeDose(rule.calc, weightKg) ?: return CalcResult(false, error = "Missing weight for perKg rule")
+
+        val (conc, totalVol, solText) = computeConcentration(med.ampoule, rule.dilution, manualAmpoule)
+        val volume = if (conc != null && conc > 0.0) dose / conc else null
+
+        return CalcResult(
+            ok = true,
+            doseMg = dose,
+            concentrationMgPerMl = conc,
+            volumeMl = volume,
+            solutionText = solText,
+            totalVolumeMl = totalVol,
+            ruleHint = rule.hint
         )
     }
 
-    /** Test/Debug-Helfer */
-    fun clearCache() { cached = null }
+    // --- intern ---------------------------------------------------------------------------
+
+    private fun selectRule(
+        rules: List<DosingRule>,
+        ageMonths: Int,
+        weightKg: Double?,
+        manualAmpoule: AmpouleStrength?
+    ): DosingRule? {
+        return rules
+            .filter { r ->
+                val ageOk = r.age?.let { a ->
+                    val minOk = a.minMonths?.let { ageMonths >= it } ?: true
+                    val maxOk = a.maxMonthsExclusive?.let { ageMonths < it } ?: true
+                    minOk && maxOk
+                } ?: true
+
+                val weightOk = r.weight?.let { w ->
+                    val minOk = w.minKg?.let { (weightKg ?: Double.NEGATIVE_INFINITY) >= it } ?: true
+                    val maxOk = w.maxKgExclusive?.let { (weightKg ?: Double.POSITIVE_INFINITY) < it } ?: true
+                    minOk && maxOk
+                } ?: true
+
+                val manualOk = r.conditions?.requiresManualAmpoule?.let { need ->
+                    if (need) manualAmpoule != null else true
+                } ?: true
+
+                ageOk && weightOk && manualOk
+            }
+            .sortedByDescending { it.priority }
+            .firstOrNull()
+    }
+
+    private fun computeDose(calc: DoseCalc, weightKg: Double?): Double? {
+        val raw = when (calc.type) {
+            "perKg" -> weightKg?.let { kg -> (calc.mgPerKg ?: 0.0) * kg }
+            "fixed" -> calc.fixedMg
+            else -> null
+        } ?: return null
+        val minC = calc.minMg ?: raw
+        val maxC = calc.maxMg ?: raw
+        return raw.coerceIn(min(minC, maxC), max(minC, maxC))
+    }
+
+    private fun computeConcentration(
+        defaultAmpoule: AmpouleStrength,
+        dilution: Dilution?,
+        manualAmpoule: AmpouleStrength?
+    ): Triple<Double?, Double?, String?> {
+        val base = manualAmpoule ?: defaultAmpoule
+        val baseConc = if (base.ml > 0.0) base.mg / base.ml else null
+        val totalVol = dilution?.totalVolumeMl
+        val solution = dilution?.solutionText
+
+        val effConc = if (totalVol != null && totalVol > 0.0) {
+            // Verdünnung auf Gesamtvolumen → mg / totalVol
+            base.mg / totalVol
+        } else baseConc
+
+        return Triple(effConc, totalVol, solution)
+    }
 }
