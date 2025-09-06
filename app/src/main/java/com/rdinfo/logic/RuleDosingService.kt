@@ -1,25 +1,37 @@
-// ============================================================
 // File: app/src/main/java/com/rdinfo/logic/RuleDosingService.kt
-// (Minimaler Service – nur, falls irgendwo referenziert)
-// ============================================================
 package com.rdinfo.logic
 
+/**
+ * Minimaler Service für Dosierregeln. Keine UI‑Abhängigkeiten.
+ */
 class RuleDosingService {
-    fun availableRoutes(): List<String> = listOf("i.v.", "i.m.", "i.o.", "s.c.")
+
+    data class DosingRule(
+        val id: String,
+        val name: String,
+        val route: String? = null,   // z. B. "i.v.", "i.m.", ...
+        val mgPerKg: Double? = null,
+        val mcgPerKg: Double? = null,
+        val absoluteMg: Double? = null,
+    )
+
+    /** Gibt eine kleine Standardliste an Applikationswegen zurück. */
+    fun availableRoutes(): List<String> = listOf("i.v.", "i.m.", "i.o.", "s.c.", "p.o.")
+
+    /**
+     * Wählt aus einer Menge von Regeln eine sinnvolle "beste" Regel aus.
+     * Priorität: passender Applikationsweg > mg/kg > µg/kg > absolute mg.
+     */
+    fun findBestDosingRule(rules: List<DosingRule>, route: String? = null): DosingRule? {
+        if (rules.isEmpty()) return null
+        val want = route?.trim()?.lowercase()
+        return rules
+            .sortedWith(
+                compareByDescending<DosingRule> { it.route?.trim()?.lowercase() == want }
+                    .thenByDescending { it.mgPerKg != null }
+                    .thenByDescending { it.mcgPerKg != null }
+                    .thenByDescending { it.absoluteMg != null }
+            )
+            .firstOrNull()
+    }
 }
-
-
-// ===============================================================
-// File: app/src/main/java/com/rdinfo/logic/RuleDosingUiAdapter.kt
-// (Minimaler UI‑Adapter – nur, falls irgendwo referenziert)
-// ===============================================================
-package com.rdinfo.logic
-
-object RuleDosingUiAdapter {
-    fun formatMl(value: Double, decimals: Int = 2): String =
-        String.format("%1$.${decimals}f ml", value)
-
-    fun formatMg(value: Double, decimals: Int = 2): String =
-        String.format("%1$.${decimals}f mg", value)
-}
-

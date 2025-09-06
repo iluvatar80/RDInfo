@@ -1,366 +1,760 @@
-// ================================
-// File: app/src/main/java/com/rdinfo/MainActivity.kt
-// (Unverändert in der Optik – inkl. fixen Imports)
-// ================================
+// Zielpfad: app/src/main/java/com/rdinfo/MainActivity.kt
+// Vollständige, bereinigte Datei (inkl. Tabellenlayout im Berechnungsblock)
+
 package com.rdinfo
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Divider
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ElevatedCard
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.PopupProperties
+import com.rdinfo.data.MedicationInfoSections
+import com.rdinfo.data.MedicationRepository
+import com.rdinfo.logic.computeDoseFor
+import com.rdinfo.logic.computeVolumeMl
+import com.rdinfo.ui.theme.AppColors
 import com.rdinfo.ui.theme.RDInfoTheme
-import kotlin.math.roundToInt
+import com.rdinfo.ui.theme.Spacing
+import java.util.Locale
 
-// Wunschfarbe für inaktive Sliderbereiche & Zierlinien (#E3B9BB)
-private val SoftPink = Color(0xFFE3B9BB)
+private val TintE6E0E9 = Color(0xFFE6E0E9)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            var darkMode by rememberSaveable { mutableStateOf(false) }
-            RDInfoTheme(darkTheme = darkMode) {
-                RDInfoApp(
-                    darkMode = darkMode,
-                    onDarkModeChange = { darkMode = it }
-                )
+            var isDark by rememberSaveable { mutableStateOf(false) }
+            var currentScreen by rememberSaveable { mutableStateOf(Screen.MAIN) }
+
+            RDInfoTheme(darkTheme = isDark) {
+                Surface(color = MaterialTheme.colorScheme.background) {
+                    when (currentScreen) {
+                        Screen.MAIN -> MainScreen(onOpenSettings = { currentScreen = Screen.SETTINGS })
+                        Screen.SETTINGS -> SettingsScreen(
+                            isDark = isDark,
+                            onBack = { currentScreen = Screen.MAIN },
+                            onToggleDark = { isDark = it }
+                        )
+                    }
+                }
             }
         }
     }
 }
 
-private enum class Screen { MAIN, SETTINGS }
+enum class Screen { MAIN, SETTINGS }
+
+enum class InfoTab { INDIKATION, KONTRAIND, WIRKUNG, NEBENWIRKUNG }
 
 @Composable
-fun RDInfoApp(
-    darkMode: Boolean,
-    onDarkModeChange: (Boolean) -> Unit
-) {
-    var screen by rememberSaveable { mutableStateOf(Screen.MAIN) }
-
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
-    ) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .padding(WindowInsets.statusBars.asPaddingValues())
-        ) {
-            when (screen) {
-                Screen.MAIN -> MedicationInput(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp)
-                        .verticalScroll(rememberScrollState()),
-                    onOpenSettings = { screen = Screen.SETTINGS }
-                )
-
-                Screen.SETTINGS -> SettingsScreen(
-                    darkMode = darkMode,
-                    onDarkModeChange = onDarkModeChange,
-                    onBack = { screen = Screen.MAIN }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun SettingsScreen(
-    darkMode: Boolean,
-    onDarkModeChange: (Boolean) -> Unit,
-    onBack: () -> Unit
-) {
-    BackHandler { onBack() }
+private fun MainScreen(onOpenSettings: () -> Unit) {
+    val scroll = rememberScrollState()
 
     Column(
-        modifier = Modifier
+        Modifier
             .fillMaxSize()
-            .padding(WindowInsets.statusBars.asPaddingValues())
-            .padding(16.dp)
+            .verticalScroll(scroll)
+            .padding(horizontal = Spacing.lg)
     ) {
-        Text("Einstellungen", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(Spacing.sm))
+        HeaderRow(onMedicationsClick = { /* TODO */ }, onMenuClick = onOpenSettings)
+        HorizontalDivider(color = AppColors.SoftPink, thickness = 1.dp)
+        Spacer(Modifier.height(Spacing.sm))
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Dark Mode", style = MaterialTheme.typography.bodyLarge)
+        // --- Alter ---
+        var years by rememberSaveable { mutableStateOf(0) }
+        LabeledCompactSlider("Jahre", years, 0..100) { years = it }
+        Spacer(Modifier.height(Spacing.sm))
+
+        var months by rememberSaveable { mutableStateOf(0) }
+        LabeledCompactSlider("Monate", months, 0..11) { months = it }
+
+        Spacer(Modifier.height(Spacing.lg))
+
+        // --- Gewicht ---
+        val estimated = remember(years, months) { estimateWeightKg(years, months) }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Gewicht (kg)", style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.weight(1f))
-            Switch(checked = darkMode, onCheckedChange = onDarkModeChange)
+            Text(
+                "Vorschlag: ${formatKg(estimated)} kg",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(Modifier.height(Spacing.xs))
+
+        var weightText by rememberSaveable { mutableStateOf("") }
+        CompactNumberField(
+            value = weightText,
+            onValueChange = { t -> if (t.matches(Regex("^[0-9]*[.,]?[0-9]{0,2}$"))) weightText = t },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        val manualWeight = parseWeightKg(weightText)
+        val effectiveWeight = manualWeight ?: estimated
+
+        Spacer(Modifier.height(Spacing.sm))
+
+        // --- Medikament ---
+        Text("Medikament", style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(Spacing.xs))
+        val medications = remember { MedicationRepository.getMedicationNames() }
+        var selectedMedication by rememberSaveable { mutableStateOf(medications.first()) }
+        CompactDropdownField(
+            selectedText = selectedMedication,
+            options = medications,
+            onSelect = { selectedMedication = it },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(Modifier.height(Spacing.sm))
+
+        // --- Einsatzfall (abhängig von Medikament) ---
+        Text("Einsatzfall", style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(Spacing.xs))
+        val useCases = remember(selectedMedication) {
+            MedicationRepository.getUseCaseNamesForMedication(selectedMedication)
+        }
+        var selectedUseCase by rememberSaveable(selectedMedication) { mutableStateOf(useCases.firstOrNull() ?: "") }
+        CompactDropdownField(
+            selectedText = selectedUseCase.ifEmpty { "—" },
+            options = useCases,
+            onSelect = { selectedUseCase = it },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(Modifier.height(Spacing.sm))
+
+        // --- Ampullenkonzentration + Applikationsart nebeneinander ---
+        var concFromSection by rememberSaveable { mutableStateOf<Double?>(null) }
+        var manualConcFlag by rememberSaveable { mutableStateOf(false) }
+        var ampMg by rememberSaveable { mutableStateOf<Double?>(null) }
+        var ampMl by rememberSaveable { mutableStateOf<Double?>(null) }
+
+        val routeOptions = remember { listOf("i.v.", "i.m.", "i.o.", "inhalativ", "s.c.") }
+        var selectedRoute by rememberSaveable { mutableStateOf(routeOptions.first()) }
+
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+            AmpouleConcentrationSection(
+                medication = selectedMedication,
+                onStateChanged = { conc, manual, mgAmp, mlAmp ->
+                    concFromSection = conc
+                    manualConcFlag = manual
+                    ampMg = mgAmp
+                    ampMl = mlAmp
+                },
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(Modifier.width(Spacing.sm))
+            RouteSection(
+                routes = routeOptions,
+                selected = selectedRoute,
+                onSelect = { selectedRoute = it },
+                modifier = Modifier.weight(1f)
+            )
         }
 
-        Spacer(Modifier.height(12.dp))
-        TextButton(onClick = onBack) { Text("Zurück") }
+        Spacer(Modifier.height(Spacing.lg))
+
+        // --- Ergebnis (Dosierung/Volumen + Hinweis) ---
+        val dosing = remember(selectedMedication, selectedUseCase, effectiveWeight, years) {
+            computeDoseFor(selectedMedication, selectedUseCase, effectiveWeight, years)
+        }
+
+        // Sonderfall: pädiatrische Reanimation Adrenalin – bei MANUELLER Ampulle auf 10 ml auffüllen
+        val needs10MlRule = selectedMedication == "Adrenalin" && selectedUseCase == "Reanimation" && years < 12
+
+        val concForVolume = remember(
+            concFromSection, manualConcFlag, dosing.recommendedConcMgPerMl, ampMg, ampMl, needs10MlRule
+        ) {
+            if (manualConcFlag) {
+                if (needs10MlRule && ampMg != null) ampMg!! / 10.0 else concFromSection
+            } else {
+                dosing.recommendedConcMgPerMl ?: concFromSection
+            }
+        }
+        val volumeMl = remember(dosing.mg, concForVolume) { computeVolumeMl(dosing.mg, concForVolume) }
+
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(Spacing.lg)) {
+                Text("Berechnung", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(Spacing.sm))
+
+                val doseText = dosing.mg?.let { "${format2(it)} mg" } ?: "—"
+                val volText = volumeMl?.let { "${format2(it)} ml" } ?: "—"
+
+                CalcTable(
+                    left = listOf("Dosierung" to doseText, "Lösung" to "—"),
+                    right = listOf("Volumen" to volText, "Gesamt" to "—")
+                )
+
+                Spacer(Modifier.height(Spacing.sm))
+                HorizontalDivider()
+                Spacer(Modifier.height(Spacing.sm))
+                Text("Hinweis", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(4.dp))
+                Text(dosing.hint, style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+
+        Spacer(Modifier.height(Spacing.sm))
+
+        // --- Info‑Buttons + Text (Repository) ---
+        var activeTab by rememberSaveable { mutableStateOf(InfoTab.INDIKATION) }
+        InfoTabsRow(activeTab = activeTab, onChange = { activeTab = it })
+        Spacer(Modifier.height(Spacing.xs))
+
+        val sections: MedicationInfoSections? = remember(selectedMedication) {
+            MedicationRepository.getInfoSections(selectedMedication)
+        }
+        val infoText = when (activeTab) {
+            InfoTab.INDIKATION -> sections?.indication
+            InfoTab.KONTRAIND -> sections?.contraindication
+            InfoTab.WIRKUNG -> sections?.effect
+            InfoTab.NEBENWIRKUNG -> sections?.sideEffects
+        } ?: "—"
+
+        Surface(
+            tonalElevation = 2.dp,
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(infoText, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(Spacing.lg))
+        }
+
+        Spacer(Modifier.height(Spacing.lg))
     }
 }
 
-/* =================== Hauptscreen – Eingaben =================== */
 @Composable
-fun MedicationInput(
-    modifier: Modifier = Modifier,
-    onOpenSettings: () -> Unit
+private fun RouteSection(
+    routes: List<String>,
+    selected: String,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    var years by rememberSaveable { mutableIntStateOf(5) }   // 0..100
-    var months by rememberSaveable { mutableIntStateOf(0) }  // 0..11
-    var weightText by rememberSaveable { mutableStateOf("") } // kg
-    var menuOpen by remember { mutableStateOf(false) }
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = TintE6E0E9),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Column(Modifier.padding(Spacing.lg)) {
+            Text("Applikationsart", style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(Spacing.xs))
+            CompactDropdownField(
+                selectedText = selected,
+                options = routes,
+                onSelect = onSelect,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
 
-    Column(modifier = modifier) {
-        Spacer(Modifier.height(8.dp)) // etwas mehr Luft nach oben
+@Composable
+private fun CalcTable(
+    left: List<Pair<String, String>>,
+    right: List<Pair<String, String>>
+) {
+    Row(Modifier.fillMaxWidth()) {
+        // Linke Hälfte (Labels und Werte in einer Flucht)
+        Row(Modifier.weight(1f)) {
+            Column(modifier = Modifier.width(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
+                left.forEachIndexed { i, (label, _) ->
+                    Text("$label:", style = MaterialTheme.typography.bodyLarge)
+                    if (i != left.lastIndex) Spacer(Modifier.height(4.dp))
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                left.forEachIndexed { i, (_, value) ->
+                    Text(
+                        value,
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                    if (i != left.lastIndex) Spacer(Modifier.height(4.dp))
+                }
+            }
+        }
+        Spacer(Modifier.width(Spacing.sm))
+        // Rechte Hälfte (rechtsbündig, Labels und Werte jeweils in einer Flucht)
+        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End) {
+            Column(modifier = Modifier.width(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
+                right.forEachIndexed { i, (label, _) ->
+                    Text(
+                        "$label:",
+                        style = MaterialTheme.typography.bodyLarge,
+                        textAlign = TextAlign.End,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (i != right.lastIndex) Spacer(Modifier.height(4.dp))
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            Column(modifier = Modifier.width(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
+                right.forEachIndexed { i, (_, value) ->
+                    Text(
+                        value,
+                        style = MaterialTheme.typography.bodyLarge,
+                        textAlign = TextAlign.End,
+                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                    if (i != right.lastIndex) Spacer(Modifier.height(4.dp))
+                }
+            }
+        }
+    }
+}
 
-        // OBERSTE ZEILE: Medikamente-Button (links) + 3-Punkte-Menü (rechts) in einer Flucht
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            // „Medikamente“ – wieder pill/abgerundet wie zuvor
-            Button(
-                onClick = {},
-                shape = RoundedCornerShape(50),
-                colors = ButtonDefaults.buttonColors(
+@Composable
+private fun InfoTabsRow(activeTab: InfoTab, onChange: (InfoTab) -> Unit) {
+    val shape = RoundedCornerShape(20.dp)
+    val buttonHeight = 36.dp
+    val labelStyle = MaterialTheme.typography.bodySmall
+
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        val items = listOf(
+            InfoTab.INDIKATION to ("Indikation" to 0.9f),
+            InfoTab.KONTRAIND to ("Kontraindikation" to 1.6f),
+            InfoTab.WIRKUNG to ("Wirkung" to 0.9f),
+            InfoTab.NEBENWIRKUNG to ("Nebenwirkung" to 1.2f)
+        )
+        items.forEach { (tab, pair) ->
+            val (label, weight) = pair
+            val selected = tab == activeTab
+            val colors = if (selected) {
+                ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary
-                ),
-                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp)
+                )
+            } else {
+                ButtonDefaults.buttonColors(
+                    containerColor = Color.Transparent,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            OutlinedButton(
+                onClick = { onChange(tab) },
+                shape = shape,
+                colors = colors,
+                border = if (selected) null else ButtonDefaults.outlinedButtonBorder,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                modifier = Modifier
+                    .weight(weight)
+                    .height(buttonHeight)
             ) {
-                Text("Medikamente", style = MaterialTheme.typography.titleMedium)
-            }
-
-            Spacer(Modifier.weight(1f))
-
-            // Drei-Punkte-Menü rechts – in einer Linie mit dem Button
-            Box {
-                TextButton(
-                    onClick = { menuOpen = true },
-                    contentPadding = PaddingValues(8.dp)
-                ) {
-                    Text(
-                        "⋮",
-                        color = MaterialTheme.colorScheme.onSurface,
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                }
-
-                DropdownMenu(
-                    expanded = menuOpen,
-                    onDismissRequest = { menuOpen = false },
-                    properties = PopupProperties(focusable = true)
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("Settings") },
-                        onClick = {
-                            menuOpen = false
-                            onOpenSettings()
-                        }
-                    )
-                }
+                Text(
+                    label,
+                    style = labelStyle,
+                    maxLines = 1,
+                    softWrap = false,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
-
-        // Zierlinie direkt unter der gesamten oberen Zeile
-        Spacer(Modifier.height(4.dp))
-        Divider(thickness = 1.dp, color = SoftPink)
-        Spacer(Modifier.height(12.dp))
-
-        LabeledIntCompactSlider(
-            label = "Jahre",
-            value = years,
-            range = 0..100, // erhöht auf 100
-            onChange = { years = it }
-        )
-
-        Spacer(Modifier.height(10.dp))
-
-        LabeledIntCompactSlider(
-            label = "Monate",
-            value = months,
-            range = 0..11,
-            onChange = { months = it }
-        )
-
-        // Gewicht näher an die Slider
-        Spacer(Modifier.height(4.dp))
-        OutlinedTextField(
-            value = weightText,
-            onValueChange = { s ->
-                weightText = s.filter { it.isDigit() || it == '.' || it == ',' }
-            },
-            label = { Text("Gewicht (kg)") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        // Berechnung näher nach oben
-        Spacer(Modifier.height(4.dp))
-        ElevatedCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Text("Berechnung", style = MaterialTheme.typography.titleMedium)
-                Text("Folgt im nächsten Schritt.", style = MaterialTheme.typography.bodyMedium)
-            }
-        }
-
-        Spacer(Modifier.height(4.dp))
     }
 }
 
-/* =================== Slider (kompakt & designgetreu) =================== */
 @Composable
-fun LabeledIntCompactSlider(
+private fun AmpouleConcentrationSection(
+    medication: String,
+    onStateChanged: (concMgPerMl: Double?, manual: Boolean, mgAmpoule: Double?, mlAmpoule: Double?) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val med = remember(medication) { MedicationRepository.getMedicationByName(medication) }
+    val defaultText = med?.defaultConcentration?.display ?: "—"
+    val defaultValue = med?.defaultConcentration?.mgPerMl
+
+    var manual by rememberSaveable(medication) { mutableStateOf(false) }
+    var mgText by rememberSaveable(medication) { mutableStateOf("") }
+    var mlText by rememberSaveable(medication) { mutableStateOf("") }
+
+    // Initial & bei Umschalten Zustand melden
+    LaunchedEffect(medication, manual) {
+        if (!manual) onStateChanged(defaultValue, false, null, null) else onStateChanged(null, true, null, null)
+    }
+
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = TintE6E0E9),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Column(Modifier.padding(Spacing.lg)) {
+            // Label oben an den Rand
+            Text("Ampullenkonzentration", style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(Spacing.xs))
+            // Schalter darunter
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Manuell", style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.width(8.dp))
+                Switch(checked = manual, onCheckedChange = { manual = it })
+            }
+            Spacer(Modifier.height(Spacing.xs))
+
+            if (!manual) {
+                Text(
+                    defaultText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            } else {
+                Row(verticalAlignment = Alignment.Top) {
+                    Column(Modifier.width(96.dp)) {
+                        Text("mg", style = MaterialTheme.typography.bodySmall)
+                        Spacer(Modifier.height(Spacing.xs))
+                        CompactNumberField(
+                            value = mgText,
+                            onValueChange = { t -> if (t.matches(Regex("^[0-9]{0,3}([.,][0-9]{0,2})?$"))) mgText = t }
+                        )
+                    }
+                    Spacer(Modifier.width(Spacing.sm))
+                    Column(Modifier.width(96.dp)) {
+                        Text("ml", style = MaterialTheme.typography.bodySmall)
+                        Spacer(Modifier.height(Spacing.xs))
+                        CompactNumberField(
+                            value = mlText,
+                            onValueChange = { t -> if (t.matches(Regex("^[0-9]{0,3}([.,][0-9]{0,2})?$"))) mlText = t }
+                        )
+                    }
+                }
+                val mg = mgText.replace(',', '.').toDoubleOrNull()
+                val ml = mlText.replace(',', '.').toDoubleOrNull()
+                val conc = if (mg != null && ml != null && ml > 0.0) mg / ml else null
+                LaunchedEffect(mgText, mlText) { onStateChanged(conc, true, mg, ml) }
+            }
+        }
+    }
+}
+
+// ---- Eingabe-/UI‑Hilfen ----
+
+@Composable
+private fun CompactNumberField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = MaterialTheme.shapes.small
+    val borderColor = MaterialTheme.colorScheme.outline
+    val textStyle = MaterialTheme.typography.bodyLarge
+
+    Box(
+        modifier
+            .height(36.dp)
+            .border(1.dp, borderColor, shape)
+            .clip(shape)
+            .background(TintE6E0E9)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .then(modifier),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = textStyle.copy(color = MaterialTheme.colorScheme.onSurface),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+private fun CompactDropdownField(
+    selectedText: String,
+    options: List<String>,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = MaterialTheme.shapes.small
+    val borderColor = MaterialTheme.colorScheme.outline
+    var expanded by remember { mutableStateOf(false) }
+    var fieldWidthPx by remember { mutableStateOf(0) }
+    val fieldWidthDp = with(LocalDensity.current) { fieldWidthPx.toDp() }
+
+    Box(
+        modifier
+            .height(36.dp)
+            .border(1.dp, borderColor, shape)
+            .clip(shape)
+            .background(TintE6E0E9)
+            .onSizeChanged { fieldWidthPx = it.width }
+            .then(modifier),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Row(
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp)
+                .pointerInput(Unit) { detectTapGestures { expanded = true } },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(selectedText, style = MaterialTheme.typography.bodyLarge)
+            DropdownChevron()
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.width(fieldWidthDp)
+        ) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option, style = MaterialTheme.typography.bodyLarge) },
+                    onClick = {
+                        onSelect(option)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DropdownChevron() {
+    val chevronColor = MaterialTheme.colorScheme.onSurface
+    Canvas(Modifier.size(16.dp)) {
+        val w = size.width; val h = size.height
+        val yTop = h * 0.4f; val yBottom = h * 0.6f
+        val midX = w / 2f
+        drawLine(color = chevronColor, start = Offset(midX - w * 0.25f, yTop), end = Offset(midX, yBottom), strokeWidth = 2f)
+        drawLine(color = chevronColor, start = Offset(midX + w * 0.25f, yTop), end = Offset(midX, yBottom), strokeWidth = 2f)
+    }
+}
+
+private fun parseWeightKg(text: String): Double? = text.replace(',', '.').toDoubleOrNull()
+private fun formatKg(v: Double): String = String.format(Locale.GERMANY, "%.1f", v)
+private fun format2(v: Double): String = String.format(Locale.GERMANY, "%.2f", v)
+
+/** Gewichtsschätzung (APLS‑basiert + monatsgenau) */
+private fun estimateWeightKg(years: Int, months: Int): Double {
+    val totalMonths = years * 12 + months
+    if (totalMonths <= 12) return 4.0 + 0.5 * totalMonths
+
+    fun aplsYearWeight(y: Int): Double = when (y) {
+        in 1..5 -> 2.0 * y + 8.0
+        in 6..12 -> 3.0 * y + 7.0
+        else -> 70.0
+    }
+
+    return when (years) {
+        in 1..11 -> {
+            val w0 = aplsYearWeight(years)
+            val w1 = aplsYearWeight(years + 1)
+            val frac = (months.coerceIn(0, 11)) / 12.0
+            w0 + (w1 - w0) * frac
+        }
+        12 -> aplsYearWeight(12)
+        else -> 70.0
+    }
+}
+
+@Composable
+private fun HeaderRow(onMedicationsClick: () -> Unit, onMenuClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = Spacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Button(
+            onClick = onMedicationsClick,
+            shape = CircleShape,
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+        ) { Text("Medikamente") }
+
+        IconButton(
+            onClick = onMenuClick,
+            modifier = Modifier.semantics {
+                contentDescription = "Mehr Optionen"
+                stateDescription = "Öffnet Einstellungen"
+            }
+        ) { MoreVertIcon() }
+    }
+}
+
+@Composable
+private fun LabeledCompactSlider(
     label: String,
     value: Int,
     range: IntRange,
-    onChange: (Int) -> Unit
+    onValueChange: (Int) -> Unit
 ) {
-    Column(Modifier.fillMaxWidth()) {
-        // Label sehr nah am Slider
-        Text("$label: $value", style = MaterialTheme.typography.bodyLarge)
-        Spacer(Modifier.height(0.dp))
-        CompactSlider(value = value, range = range, onChange = onChange)
-        // Zierlinie direkt unter dem Slider
-        Spacer(Modifier.height(0.dp))
-        Divider(thickness = 1.dp, color = SoftPink)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("$label:", style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.width(Spacing.xs))
+        Text(value.toString(), style = MaterialTheme.typography.bodySmall)
     }
+    Spacer(Modifier.height(0.dp))
+    CompactSlider(value = value, onValueChange = onValueChange, range = range)
+    Spacer(Modifier.height(Spacing.xs))
 }
 
 @Composable
-fun CompactSlider(
+private fun CompactSlider(
     value: Int,
+    onValueChange: (Int) -> Unit,
     range: IntRange,
-    onChange: (Int) -> Unit,
-    modifier: Modifier = Modifier
-        .fillMaxWidth()
-        .height(40.dp) // Gesamtraum
+    modifier: Modifier = Modifier,
+    trackHeight: Dp = 14.dp,
+    activeColor: Color = TintE6E0E9,
+    inactiveColor: Color = TintE6E0E9
 ) {
-    // Inaktiv: #E3B9BB, Aktiv: Primär-Rot
-    val active = MaterialTheme.colorScheme.primary
-    val inactive = SoftPink
+    val density = LocalDensity.current
+    val trackHeightPx = with(density) { trackHeight.toPx() }
+    var widthPx by remember { mutableStateOf(0f) }
 
-    var widthPx by remember { mutableStateOf(1f) }
+    val min = range.first
+    val max = range.last
+    val span = (max - min).coerceAtLeast(1)
+
+    fun xFromValue(v: Int): Float {
+        val clamped = v.coerceIn(min, max)
+        val frac = (clamped - min).toFloat() / span
+        return frac * widthPx
+    }
+
+    fun valueFromX(x: Float): Int {
+        if (widthPx <= 0f) return value
+        val frac = (x / widthPx).coerceIn(0f, 1f)
+        return (min + frac * span).toInt()
+    }
+
+    val inactive = inactiveColor
+    val active = activeColor
+    val thumbColor = MaterialTheme.colorScheme.onPrimary
 
     Box(
-        modifier = modifier
-            .onSizeChanged { widthPx = it.width.toFloat() }
+        modifier
+            .fillMaxWidth()
+            .height(40.dp)
+            .onSizeChanged { size -> widthPx = size.width.toFloat() }
+            .pointerInput(range) { detectTapGestures(onTap = { pos -> onValueChange(valueFromX(pos.x)) }) }
             .pointerInput(range) {
-                detectTapGestures { offset ->
-                    val ratio = (offset.x.coerceIn(0f, widthPx)) / widthPx
-                    val newVal = (range.first + (range.last - range.first) * ratio)
-                        .roundToInt()
-                        .coerceIn(range)
-                    onChange(newVal)
-                }
+                detectDragGestures(
+                    onDragStart = { o -> onValueChange(valueFromX(o.x)) },
+                    onDrag = { change, _ -> onValueChange(valueFromX(change.position.x)) },
+                )
             }
-            .pointerInput(range) {
-                detectDragGestures { change, _ ->
-                    val ratio = (change.position.x.coerceIn(0f, widthPx)) / widthPx
-                    val newVal = (range.first + (range.last - range.first) * ratio)
-                        .roundToInt()
-                        .coerceIn(range)
-                    onChange(newVal)
-                }
-            }
+            .semantics { stateDescription = "$value" },
+        contentAlignment = Alignment.CenterStart
     ) {
-        Canvas(Modifier.fillMaxSize()) {
-            // Track-Höhe – bestimmt auch die Thumb-Größe
-            val trackHeight = 14.dp.toPx()
-            val radius = trackHeight / 2
-            val centerY = size.height / 2
+        Canvas(Modifier.fillMaxWidth().height(trackHeight)) {
+            val trackCorner = CornerRadius(trackHeightPx / 2f, trackHeightPx / 2f)
+            val centerY = size.height / 2f
+            val top = centerY - trackHeightPx / 2f
 
-            // Inaktiver Track (voll, #E3B9BB)
+            // Track
             drawRoundRect(
                 color = inactive,
-                topLeft = Offset(0f, centerY - trackHeight / 2),
-                size = Size(size.width, trackHeight),
-                cornerRadius = CornerRadius(radius, radius)
+                topLeft = Offset(0f, top),
+                size = Size(size.width, trackHeightPx),
+                cornerRadius = trackCorner
             )
 
-            // Aktiver Track (links vom Thumb, Rot)
-            val ratio = (value - range.first).toFloat() /
-                    (range.last - range.first).coerceAtLeast(1)
-            val activeWidth = size.width * ratio
+            // Aktiver Track (gleiche Farbe)
+            val thumbCenterX = xFromValue(value)
+            val thumbSize = trackHeightPx
+            val half = thumbSize / 2f
+            val clampedCx = thumbCenterX.coerceIn(half, size.width - half)
             drawRoundRect(
                 color = active,
-                topLeft = Offset(0f, centerY - trackHeight / 2),
-                size = Size(activeWidth, trackHeight),
-                cornerRadius = CornerRadius(radius, radius)
+                topLeft = Offset(0f, top),
+                size = Size(clampedCx.coerceAtLeast(0f), trackHeightPx),
+                cornerRadius = trackCorner
             )
 
-            // Thumb – QUADRATISCH (eckig), Seitenlänge = trackHeight
-            val thumbSide = trackHeight
-            val half = thumbSide / 2f
-            val thumbXCenter = activeWidth.coerceIn(half, size.width - half)
-            val topLeft = Offset(thumbXCenter - half, centerY - half)
-
-            // rotes Quadrat (eckig)
-            drawRect(
-                color = active,
-                topLeft = topLeft,
-                size = Size(thumbSide, thumbSide)
+            // Thumb
+            val thumbCorner = CornerRadius(trackHeightPx * 0.25f, trackHeightPx * 0.25f)
+            val left = clampedCx - half
+            drawRoundRect(
+                color = thumbColor,
+                topLeft = Offset(left, top),
+                size = Size(thumbSize, thumbSize),
+                cornerRadius = thumbCorner
             )
-
-            // weißer VERTIKALER Streifen – durchgehend & satt
-            val stripeStroke = trackHeight * 0.48f // breit
-            drawLine(
-                color = Color.White,
-                start = Offset(thumbXCenter, centerY - half),
-                end = Offset(thumbXCenter, centerY + half),
-                strokeWidth = stripeStroke,
-                cap = StrokeCap.Butt
-            )
+            val stripeX = left + thumbSize / 2f
+            drawLine(color = Color.White, start = Offset(stripeX, top + 2f), end = Offset(stripeX, top + thumbSize - 2f), strokeWidth = 2f)
         }
     }
 }
 
+@Composable
+private fun MoreVertIcon(
+    modifier: Modifier = Modifier,
+    dotSize: Dp = 3.dp,
+    gap: Dp = 3.dp
+) {
+    val dot = with(LocalDensity.current) { dotSize.toPx() }
+    val spacing = with(LocalDensity.current) { (dotSize + gap).toPx() }
+    val dotColor = MaterialTheme.colorScheme.onSurface
+
+    Canvas(Modifier.size(24.dp).then(modifier)) {
+        val cx = size.width / 2f
+        val startY = size.height / 2f - spacing
+        repeat(3) { i ->
+            drawCircle(color = dotColor, radius = dot / 2f, center = Offset(cx, startY + i * spacing))
+        }
+    }
+}
+
+@Composable
+private fun SettingsScreen(
+    isDark: Boolean,
+    onBack: () -> Unit,
+    onToggleDark: (Boolean) -> Unit
+) {
+    Column(Modifier.fillMaxSize().padding(Spacing.lg)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Einstellungen", style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onBack) { Text("Zurück") }
+        }
+        Spacer(Modifier.height(Spacing.lg))
+
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Dark‑Mode", style = MaterialTheme.typography.bodyLarge)
+            Spacer(Modifier.weight(1f))
+            Switch(checked = isDark, onCheckedChange = onToggleDark)
+        }
+    }
+}
