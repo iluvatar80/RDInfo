@@ -5,6 +5,7 @@
 .idea/deploymentTargetSelector.xml
 .idea/deviceManager.xml
 .idea/gradle.xml
+.idea/inspectionProfiles/Project_Default.xml
 .idea/migrations.xml
 .idea/misc.xml
 .idea/runConfigurations.xml

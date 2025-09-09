@@ -1,59 +1,72 @@
 // Zielpfad: app/src/main/java/com/rdinfo/logic/DosingCalculator.kt
-// Vollständige Datei – regelgetrieben, Exceptions bei Fehlern, Route‑Support, 0,1‑ml‑Rundung.
+// Vollständige Datei – nutzt Repository‑Regeln inkl. Verdünnung und (optional) Route
 
 package com.rdinfo.logic
 
 import com.rdinfo.data.MedicationRepository
-import kotlin.math.min
-import kotlin.math.roundToInt
 
+/** Ergebnis der Dosisermittlung für die UI. */
 data class DosingResult(
-    val mg: Double?,                      // berechnete Dosis (mg) oder null, wenn nicht berechenbar
-    val hint: String,                     // Hinweis-/Regeltext (deutsch)
-    val recommendedConcMgPerMl: Double?,  // Arbeitskonzentration (mg/ml), falls aus Regel vorgegeben
-    val solutionText: String?,            // z. B. "NaCl 0,9 %"
-    val totalPreparedMl: Double?          // z. B. 10.0
+    val mg: Double?,
+    val hint: String,
+    val recommendedConcMgPerMl: Double?,
+    val solutionText: String?,          // z. B. "NaCl 0,9 %"
+    val totalPreparedMl: Double?        // z. B. 10.0 → „Lösung: 10 ml …“
 )
 
 object DosingCalculator {
-
     /**
-     * Wirft Exceptions mit deutscher Meldung, wenn Daten fehlen/unlogisch sind.
-     * Route ist optional (falls nicht übergeben, wird nur nach UseCase gefiltert).
+     * Ermittelt die Dosis regelgetrieben. Optional kann eine Route vorgegeben werden
+     * (wenn null, wird wie bisher ohne Routenfilter gewählt).
      */
     fun compute(
         medicationName: String,
         useCaseLabel: String,
-        routeDisplayName: String?, // z. B. "i.v." / "i.m." / "inhalativ"
         ageYears: Int,
-        weightKg: Double
+        weightKg: Double,
+        route: String? = null
     ): DosingResult {
-        val rule = MedicationRepository.findBestDosingRuleWithRoute(
-            medicationName = medicationName,
-            useCaseLabelOrKey = useCaseLabel,
-            routeDisplayName = routeDisplayName,
-            ageYears = ageYears,
-            weightKg = weightKg
-        ) ?: throw IllegalStateException(
-            "Keine Dosisregel für $useCaseLabel (${routeDisplayName ?: "ohne Route"}) bei $medicationName hinterlegt."
+        val rule = if (route.isNullOrBlank()) {
+            MedicationRepository.findBestDosingRule(
+                medicationName = medicationName,
+                useCaseLabelOrKey = useCaseLabel,
+                ageYears = ageYears,
+                weightKg = weightKg
+            )
+        } else {
+            MedicationRepository.findBestDosingRuleWithRoute(
+                medicationName = medicationName,
+                useCaseLabelOrKey = useCaseLabel,
+                ageYears = ageYears,
+                weightKg = weightKg,
+                routeDisplayName = route
+            )
+        }
+
+        // Keine passende Regel gefunden → kurzer Hinweis
+        if (rule == null) return DosingResult(
+            mg = null,
+            hint = "Keine Dosisregel für $useCaseLabel bei $medicationName hinterlegt.",
+            recommendedConcMgPerMl = null,
+            solutionText = null,
+            totalPreparedMl = null
         )
 
+        // Dosisbasis bestimmen
         val baseMg = when {
             rule.fixedDoseMg != null -> rule.fixedDoseMg
             rule.doseMgPerKg != null -> rule.doseMgPerKg * weightKg
             else -> null
-        } ?: throw IllegalStateException(
-            "Für $medicationName/$useCaseLabel ist keine Dosis (mg/kg oder fixe mg) angegeben."
-        )
+        }
+        val mg = baseMg?.let { b -> rule.maxDoseMg?.let { max -> kotlin.math.min(b, max) } ?: b }
 
-        val mg = if (rule.maxDoseMg != null) min(baseMg, rule.maxDoseMg) else baseMg
-
+        // Hinweistext (Route vorangestellt, falls vorhanden)
         val hintPrefix = rule.route?.let { "$it: " } ?: ""
-        val hint = (hintPrefix + (rule.note ?: "")).ifBlank { "—" }
+        val hintText = (hintPrefix + (rule.note ?: "")).ifBlank { "—" }
 
         return DosingResult(
             mg = mg,
-            hint = hint,
+            hint = hintText,
             recommendedConcMgPerMl = rule.recommendedConcMgPerMl,
             solutionText = rule.solutionText,
             totalPreparedMl = rule.totalPreparedMl
@@ -61,22 +74,26 @@ object DosingCalculator {
     }
 }
 
-/**
- * Bequeme UI-Fassade (Kompatibilität). Route kann null sein.
- */
+/** Bequemer Wrapper für bestehende Aufrufe ohne Route. */
+fun computeDoseFor(
+    medication: String,
+    useCase: String,
+    weightKg: Double,
+    ageYears: Int
+): DosingResult = DosingCalculator.compute(medication, useCase, ageYears, weightKg, route = null)
+
+/** Wrapper mit benanntem Parameter `routeDisplayName` (Kompatibilität zur MainActivity). */
 fun computeDoseFor(
     medication: String,
     useCase: String,
     weightKg: Double,
     ageYears: Int,
-    routeDisplayName: String? = null
-): DosingResult = DosingCalculator.compute(medication, useCase, routeDisplayName, ageYears, weightKg)
+    routeDisplayName: String?
+): DosingResult = DosingCalculator.compute(medication, useCase, ageYears, weightKg, route = routeDisplayName)
 
-/**
- * Gibt das Volumen in ml zurück und rundet intern auf 0,1 ml.
- */
+
+/** ml‑Berechnung aus mg und mg/ml – gibt null zurück, wenn Eingaben fehlen/ungenültig sind. */
 fun computeVolumeMl(doseMg: Double?, concentrationMgPerMl: Double?): Double? {
     if (doseMg == null || concentrationMgPerMl == null || concentrationMgPerMl <= 0.0) return null
-    val raw = doseMg / concentrationMgPerMl
-    return ((raw * 10.0).roundToInt() / 10.0)
+    return doseMg / concentrationMgPerMl
 }

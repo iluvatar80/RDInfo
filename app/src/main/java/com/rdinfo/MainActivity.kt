@@ -1,6 +1,6 @@
 // Zielpfad: app/src/main/java/com/rdinfo/MainActivity.kt
-// Vollständige Datei – Fix: rechte Labels noch näher an die Werte; Slider‑Thumbs in Primary‑Rot;
-// "Lösung" zeigt Menge + Stoff; Dezimal‑Komma bündig; keine Optikänderung außerhalb des Blocks.
+// Vollständige Datei – Excel‑Layout: links 2 Spalten (Label/Wert), mittig schmaler Spalt,
+// rechts 2 Spalten (Label bündig, Werte rechtsbündig, Dezimalen ausgerichtet), Einheiten „ml“ sichtbar.
 
 package com.rdinfo
 
@@ -37,6 +37,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.rdinfo.data.MedicationInfoSections
@@ -95,11 +96,11 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
 
         // --- Alter ---
         var years by rememberSaveable { mutableStateOf(0) }
-        LabeledCompactSlider("Jahre", years, 0..100) { years = it }
+        LabeledCompactSlider("Jahre", years, 0..100) { v -> years = v }
         Spacer(Modifier.height(Spacing.sm))
 
         var months by rememberSaveable { mutableStateOf(0) }
-        LabeledCompactSlider("Monate", months, 0..11) { months = it }
+        LabeledCompactSlider("Monate", months, 0..11) { v -> months = v }
 
         Spacer(Modifier.height(Spacing.lg))
 
@@ -220,17 +221,14 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
             val mgLocal = ampMg
             val mlLocal = ampMl
             when {
-                // Manuelle Ampulle mit gültigen Werten
                 manualConcFlag && mgLocal != null && mlLocal != null && mlLocal > 0.0 -> mgLocal / mlLocal
-                // Regel liefert Arbeitskonzentration (z. B. 0,1 mg/ml nach 1:10)
                 dosing.recommendedConcMgPerMl != null -> dosing.recommendedConcMgPerMl
-                // Fallback: Standard aus Sektion
                 else -> concFromSection
             }
         }
         val volumeMl = remember(dosing.mg, concForVolume) { computeVolumeMl(dosing.mg, concForVolume) }
 
-        // Werte formatieren (kommabündig + ausreichend breite Wertespalte)
+        // Werte formatieren (kommabündig + definierter Spalt)
         val doseText = dosing.mg?.let { "${format2(it)} mg" } ?: "—"
         val volNum = volumeMl?.let { format2(it) }
         val totalNum = dosing.totalPreparedMl?.let { format2(it) }
@@ -238,11 +236,11 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
         val volText = volPadded?.let { "$it ml" } ?: "—"
         val totalText = totalPadded?.let { "$it ml" } ?: "—"
 
-        // Lösung: mit Menge, wenn vorhanden (z. B. "10 ml NaCl 0,9 %")
+        // Lösung: NBSP zwischen Zahl–ml und 0,9–% (kein Umbruch vor %)
         val solutionText = when {
             dosing.totalPreparedMl != null && dosing.solutionText != null ->
-                "${formatNoTrailingZeros(dosing.totalPreparedMl)} ml ${dosing.solutionText}"
-            dosing.solutionText != null -> dosing.solutionText
+                "${formatNoTrailingZeros(dosing.totalPreparedMl!!)} ml ${dosing.solutionText.replace(" %", " %" )}"
+            dosing.solutionText != null -> dosing.solutionText.replace(" %", " %")
             else -> "—"
         }
 
@@ -269,7 +267,7 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
 
         // --- Info‑Buttons + Text (Repository) ---
         var activeTab by rememberSaveable { mutableStateOf(InfoTab.INDIKATION) }
-        InfoTabsRow(activeTab = activeTab, onChange = { activeTab = it })
+        InfoTabsRow(activeTab = activeTab, onChange = { tab -> activeTab = tab })
         Spacer(Modifier.height(Spacing.xs))
 
         val sections: MedicationInfoSections? = remember(selectedMedication) {
@@ -322,59 +320,72 @@ private fun RouteSection(
 @Composable
 private fun CalcTable(
     left: List<Pair<String, String>>,
-    right: List<Pair<String, String>>
+    right: List<Pair<String, String>>,
+    labelWidthLeft: Dp = 70.dp,
+    valueWidthLeft: Dp = 140.dp,
+    labelWidthRight: Dp = 62.dp,
+    valueWidthRight: Dp = 62.dp,
+    middleGap: Dp = 16.dp,
+    rowGap: Dp = 4.dp
 ) {
     val valueStyleTabular: TextStyle = MaterialTheme.typography.bodyLarge.copy(fontFeatureSettings = "tnum")
 
     Row(Modifier.fillMaxWidth()) {
-        // Linke Hälfte
-        Row(Modifier.weight(1f)) {
-            Column(modifier = Modifier.width(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
-                left.forEachIndexed { i, (label, _) ->
-                    Text("$label:", style = MaterialTheme.typography.bodyLarge)
-                    if (i != left.lastIndex) Spacer(Modifier.height(4.dp))
-                }
-            }
-            Spacer(Modifier.width(8.dp))
-            Column(Modifier.weight(1f)) {
-                left.forEachIndexed { i, (_, value) ->
-                    Text(
-                        value,
-                        style = valueStyleTabular,
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                    if (i != left.lastIndex) Spacer(Modifier.height(4.dp))
-                }
+        // Linke Label-Spalte (fixe Breite)
+        Column(Modifier.width(labelWidthLeft)) {
+            left.forEachIndexed { i, (label, _) ->
+                Text(
+                    "$label:",
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(bottom = if (i != left.lastIndex) rowGap else 0.dp)
+                )
             }
         }
-        Spacer(Modifier.width(Spacing.sm))
-        // Rechte Hälfte – Labels noch näher an den Werten, Werte-Spalte breit genug
-        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End) {
-            Column(modifier = Modifier.width(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
-                right.forEachIndexed { i, (label, _) ->
-                    Text(
-                        "$label:",
-                        style = MaterialTheme.typography.bodyLarge,
-                        textAlign = TextAlign.End,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    if (i != right.lastIndex) Spacer(Modifier.height(4.dp))
-                }
+        // Linke Werte-Spalte (fixe Breite)
+        Column(Modifier.width(valueWidthLeft)) {
+            left.forEachIndexed { i, (label, value) ->
+                val isSolution = label == "Lösung"
+                Text(
+                    value,
+                    style = if (isSolution) MaterialTheme.typography.bodyLarge else valueStyleTabular,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(bottom = if (i != left.lastIndex) rowGap else 0.dp)
+                )
             }
-            Spacer(Modifier.width(2.dp)) // noch enger an den Werten
-            Column(modifier = Modifier.widthIn(min = 128.dp)) { // etwas breiter, damit "ml" nicht abgeschnitten wird
-                right.forEachIndexed { i, (_, value) ->
-                    Text(
-                        value,
-                        style = valueStyleTabular,
-                        textAlign = TextAlign.End,
-                        modifier = Modifier.fillMaxWidth(),
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                    if (i != right.lastIndex) Spacer(Modifier.height(4.dp))
-                }
+        }
+
+        // Rechte Label-Spalte inkl. mittlerem Abstand (kein Spacer, sondern Padding)
+        Column(
+            Modifier
+                .width(labelWidthRight + middleGap)
+                .padding(start = middleGap)
+        ) {
+            right.forEachIndexed { i, (label, _) ->
+                Text(
+                    "$label:",
+                    style = MaterialTheme.typography.bodyLarge,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = if (i != right.lastIndex) rowGap else 0.dp)
+                )
+            }
+        }
+        // Rechte Werte-Spalte (fixe Breite)
+        Column(Modifier.width(valueWidthRight)) {
+            right.forEachIndexed { i, (_, value) ->
+                Text(
+                    value,
+                    style = valueStyleTabular,
+                    textAlign = TextAlign.End,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = if (i != right.lastIndex) rowGap else 0.dp)
+                )
             }
         }
     }
@@ -627,10 +638,6 @@ private fun estimateWeightKg(years: Int, months: Int): Double {
 
 // ---- Dezimal‑Ausrichtung ----
 
-/**
- * Richtet zwei Werte so aus, dass das Dezimal‑Komma untereinander steht.
- * Verwendet U+2007 (Figure Space) zum Links‑Padding.
- */
 private fun alignDecimalForTwo(a: String?, b: String?): Pair<String?, String?> {
     if (a == null && b == null) return null to null
     val aInt = a?.substringBefore(',')?.filter { it.isDigit() } ?: ""
@@ -642,7 +649,7 @@ private fun alignDecimalForTwo(a: String?, b: String?): Pair<String?, String?> {
         val rest = x.substringAfter(',', missingDelimiterValue = "")
         val digitsOnly = intPart.filter { it.isDigit() }
         val padCount = maxLen - digitsOnly.length
-        val pad = buildString { repeat(padCount) { append(' ') } } // Figure Space
+        val pad = buildString { repeat(padCount) { append(' ') } } // U+2007 Figure Space
         return if (rest.isEmpty()) pad + intPart else pad + intPart + "," + rest
     }
     return pad(a) to pad(b)
@@ -727,7 +734,7 @@ private fun CompactSlider(
 
     val inactive = inactiveColor
     val active = activeColor
-    val thumbColor = MaterialTheme.colorScheme.primary // Primary-Rot wie "Medikamente"
+    val thumbColor = MaterialTheme.colorScheme.primary
 
     Box(
         modifier
@@ -749,7 +756,6 @@ private fun CompactSlider(
             val centerY = size.height / 2f
             val top = centerY - trackHeightPx / 2f
 
-            // Track
             drawRoundRect(
                 color = inactive,
                 topLeft = Offset(0f, top),
@@ -757,7 +763,6 @@ private fun CompactSlider(
                 cornerRadius = trackCorner
             )
 
-            // Aktiver Track (gleiche Farbe)
             val thumbCenterX = xFromValue(value)
             val thumbSize = trackHeightPx
             val half = thumbSize / 2f
@@ -769,16 +774,13 @@ private fun CompactSlider(
                 cornerRadius = trackCorner
             )
 
-            // Thumb – Primary-Rot
-            val thumbCorner = CornerRadius(trackHeightPx * 0.25f, trackHeightPx * 0.25f)
-            val left = clampedCx - half
             drawRoundRect(
                 color = thumbColor,
-                topLeft = Offset(left, top),
+                topLeft = Offset(clampedCx - half, top),
                 size = Size(thumbSize, thumbSize),
-                cornerRadius = thumbCorner
+                cornerRadius = CornerRadius(trackHeightPx * 0.25f, trackHeightPx * 0.25f)
             )
-            val stripeX = left + thumbSize / 2f
+            val stripeX = clampedCx
             drawLine(color = Color.White, start = Offset(stripeX, top + 2f), end = Offset(stripeX, top + thumbSize - 2f), strokeWidth = 2f)
         }
     }
