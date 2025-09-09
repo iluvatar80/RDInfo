@@ -1,5 +1,5 @@
 // Zielpfad: app/src/main/java/com/rdinfo/data/MedicationRepository.kt
-// Saubere, kompilierende Version. Regeln liegen hier und werden von der Logik/UI nachgeschlagen.
+// Vollständige Datei – dynamische Routen, Lösung+Gesamt in Regeln, kompatibel zur MainActivity.
 
 package com.rdinfo.data
 
@@ -49,8 +49,9 @@ data class MedicationInfoSections(
 )
 
 /**
- * Dosisregel (reine Daten, keine Logik). Mindestens eine der Größen
- * [doseMgPerKg] oder [fixedDoseMg] muss gesetzt sein.
+ * Dosisregel (reine Daten, keine Logik).
+ * Mindestens eine der Größen [doseMgPerKg] oder [fixedDoseMg] muss gesetzt sein.
+ * "solutionText" und "totalPreparedMl" werden für die Anzeige verwendet.
  */
 data class DosingRule(
     val useCase: UseCaseKey,
@@ -61,8 +62,10 @@ data class DosingRule(
     val doseMgPerKg: Double? = null,
     val fixedDoseMg: Double? = null,
     val maxDoseMg: Double? = null,
-    val recommendedConcMgPerMl: Double? = null,
-    val route: String? = null,
+    val recommendedConcMgPerMl: Double? = null, // Arbeitskonzentration (mg/ml) nach evtl. Verdünnung
+    val route: String? = null,                  // z. B. "IV/IO", "IM", "inhalativ/nebulisiert"
+    val solutionText: String? = null,           // z. B. "NaCl 0,9 %"
+    val totalPreparedMl: Double? = null,        // z. B. 10.0
     val note: String? = null
 )
 
@@ -106,33 +109,42 @@ object MedicationRepository {
                     useCase = UseCaseKey.REANIMATION,
                     ageMaxYears = 11,
                     doseMgPerKg = 0.01,
-                    recommendedConcMgPerMl = 0.1,
+                    maxDoseMg = null,
+                    recommendedConcMgPerMl = 0.1,         // 1:10 (0,1 mg/ml)
                     route = "IV/IO",
+                    solutionText = "NaCl 0,9 %",
+                    totalPreparedMl = 10.0,
                     note = "<12 J.: 0,01 mg/kg; 1:10 (0,1 mg/ml)."
                 ),
-                // ≥12 J. – Platzhalter
+                // ≥12 J. (Erwachsene) – Werte bitte aus PDF ergänzen (derzeit absichtlicher Fehlerhinweis)
                 DosingRule(
                     useCase = UseCaseKey.REANIMATION,
                     ageMinYears = 12,
-                    fixedDoseMg = null,
+                    fixedDoseMg = null,                    // TODO: aus PDF hinterlegen
                     recommendedConcMgPerMl = 0.1,
                     route = "IV/IO",
-                    note = "Erw.: Reanimationsschema gemäß Leitlinie."
+                    solutionText = "NaCl 0,9 %",
+                    totalPreparedMl = 10.0,
+                    note = "Erw.: Reanimationsschema gemäß Leitlinie (Wert im Repo ergänzen)."
                 ),
-                // Anaphylaxie IM 0,01 mg/kg, max. 0,5 mg – 1 mg/ml
+                // Anaphylaxie IM 0,01 mg/kg, max. 0,5 mg – 1 mg/ml (unverdünnt)
                 DosingRule(
                     useCase = UseCaseKey.ANAPHYLAXIE,
                     doseMgPerKg = 0.01,
                     maxDoseMg = 0.5,
                     recommendedConcMgPerMl = 1.0,
                     route = "IM",
+                    solutionText = null,
+                    totalPreparedMl = null,
                     note = "IM: 0,01 mg/kg; max. 0,5 mg pro Gabe."
                 ),
-                // Schwellung obere Atemwege – Hinweis
+                // Schwellung obere Atemwege – Platzhalter
                 DosingRule(
                     useCase = UseCaseKey.OBERER_ATEMWEG_SCHWELLUNG,
                     fixedDoseMg = null,
                     route = "inhalativ/nebulisiert",
+                    solutionText = null,
+                    totalPreparedMl = null,
                     note = "Schema präparateabhängig; getrennt zu hinterlegen."
                 )
             )
@@ -189,13 +201,25 @@ object MedicationRepository {
     fun getInfoSections(name: String): MedicationInfoSections? =
         getMedicationByName(name)?.info
 
+    // Dynamische Routen (für UI-Dropdown)
+    fun getRouteNamesForMedicationUseCase(medName: String, useCaseLabel: String): List<String> {
+        val med = getMedicationByName(medName) ?: return emptyList()
+        val key = useCaseKeyFromLabel(useCaseLabel) ?: return emptyList()
+        val set = linkedSetOf<String>()
+        med.dosing.filter { it.useCase == key }.forEach { r ->
+            r.route?.let { expandRouteTokens(it).forEach { tok -> set.add(displayRouteName(tok)) } }
+        }
+        return set.toList()
+    }
+
     // ---- API (für Logik) ----
 
     fun getDosingRulesForMedication(name: String): List<DosingRule> =
         getMedicationByName(name)?.dosing ?: emptyList()
 
     /**
-     * Wählt die passendste Regel: Filter nach Use‑Case + Bedingungen, dann die spezifischste (meiste Schranken) nehmen.
+     * Wählt die passendste Regel: nach Use-Case (+ optional Route) filtern,
+     * dann die spezifischste nehmen (mehr Schranken = spezifischer).
      */
     fun findBestDosingRule(
         medicationName: String,
@@ -203,16 +227,38 @@ object MedicationRepository {
         ageYears: Int,
         weightKg: Double
     ): DosingRule? {
+        // Rückwärtskompatibel (ohne Route)
+        return findBestDosingRuleWithRoute(medicationName, useCaseLabelOrKey, null, ageYears, weightKg)
+    }
+
+    fun findBestDosingRuleWithRoute(
+        medicationName: String,
+        useCaseLabelOrKey: String,
+        routeDisplayName: String?, // z. B. "i.v.", "i.o.", "inhalativ"
+        ageYears: Int,
+        weightKg: Double
+    ): DosingRule? {
         val med = getMedicationByName(medicationName) ?: return null
         val keyFromLabel = useCaseKeyFromLabel(useCaseLabelOrKey)
         val key = keyFromLabel ?: runCatching { UseCaseKey.valueOf(useCaseLabelOrKey) }.getOrNull() ?: return null
+
+        val routeToken = routeDisplayName?.let { normalizeRouteToken(it) }
 
         val candidates = med.dosing.filter { it.useCase == key }.filter { rule ->
             val ageOk = (rule.ageMinYears == null || ageYears >= rule.ageMinYears) &&
                     (rule.ageMaxYears == null || ageYears <= rule.ageMaxYears)
             val wtOk = (rule.weightMinKg == null || weightKg >= rule.weightMinKg) &&
                     (rule.weightMaxKg == null || weightKg <= rule.weightMaxKg)
-            ageOk && wtOk
+
+            val routeOk = when {
+                routeToken == null -> true // keine Route vorgegeben
+                rule.route == null -> false
+                else -> {
+                    val allowed = expandRouteTokens(rule.route).map { normalizeRouteToken(it) }.toSet()
+                    allowed.contains(routeToken)
+                }
+            }
+            ageOk && wtOk && routeOk
         }
         if (candidates.isEmpty()) return null
 
@@ -225,5 +271,38 @@ object MedicationRepository {
             return s
         }
         return candidates.maxBy { score(it) }
+    }
+
+    // ---- Helpers ----
+
+    // Zerlegt "IV/IO", "inhalativ/nebulisiert", "IM" in Einzeltokens
+    private fun expandRouteTokens(route: String): List<String> {
+        return route.split('/', ',', ';')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+    }
+
+    // Normalisiert zu Vergleichs-Tokens
+    private fun normalizeRouteToken(s: String): String {
+        val t = s.trim().lowercase()
+        return when (t) {
+            "iv", "i.v.", "i v" -> "iv"
+            "io", "i.o.", "i o" -> "io"
+            "im", "i.m.", "i m" -> "im"
+            "sc", "s.c.", "s c" -> "sc"
+            "inhalativ", "nebulisiert", "neb" -> t
+            else -> t
+        }
+    }
+
+    // Anzeigeform fürs UI
+    private fun displayRouteName(token: String): String {
+        return when (normalizeRouteToken(token)) {
+            "iv" -> "i.v."
+            "io" -> "i.o."
+            "im" -> "i.m."
+            "sc" -> "s.c."
+            else -> token // "inhalativ", "nebulisiert", etc.
+        }
     }
 }

@@ -1,5 +1,6 @@
 // Zielpfad: app/src/main/java/com/rdinfo/MainActivity.kt
-// Vollständige, bereinigte Datei (inkl. Tabellenlayout im Berechnungsblock)
+// Vollständige Datei – Fix: rechte Labels noch näher an die Werte; Slider‑Thumbs in Primary‑Rot;
+// "Lösung" zeigt Menge + Stoff; Dezimal‑Komma bündig; keine Optikänderung außerhalb des Blocks.
 
 package com.rdinfo
 
@@ -34,11 +35,13 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.rdinfo.data.MedicationInfoSections
 import com.rdinfo.data.MedicationRepository
+import com.rdinfo.logic.DosingResult
 import com.rdinfo.logic.computeDoseFor
 import com.rdinfo.logic.computeVolumeMl
 import com.rdinfo.ui.theme.AppColors
@@ -161,8 +164,12 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
         var ampMg by rememberSaveable { mutableStateOf<Double?>(null) }
         var ampMl by rememberSaveable { mutableStateOf<Double?>(null) }
 
-        val routeOptions = remember { listOf("i.v.", "i.m.", "i.o.", "inhalativ", "s.c.") }
-        var selectedRoute by rememberSaveable { mutableStateOf(routeOptions.first()) }
+        val routeOptions = remember(selectedMedication, selectedUseCase) {
+            MedicationRepository.getRouteNamesForMedicationUseCase(selectedMedication, selectedUseCase)
+        }
+        var selectedRoute by rememberSaveable(selectedMedication, selectedUseCase) {
+            mutableStateOf(routeOptions.firstOrNull() ?: "i.v.")
+        }
 
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
             AmpouleConcentrationSection(
@@ -187,35 +194,66 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
         Spacer(Modifier.height(Spacing.lg))
 
         // --- Ergebnis (Dosierung/Volumen + Hinweis) ---
-        val dosing = remember(selectedMedication, selectedUseCase, effectiveWeight, years) {
-            computeDoseFor(selectedMedication, selectedUseCase, effectiveWeight, years)
+        val dosing = remember(selectedMedication, selectedUseCase, selectedRoute, effectiveWeight, years) {
+            runCatching {
+                computeDoseFor(
+                    medication = selectedMedication,
+                    useCase = selectedUseCase,
+                    weightKg = effectiveWeight,
+                    ageYears = years,
+                    routeDisplayName = selectedRoute
+                )
+            }.getOrElse { e ->
+                DosingResult(
+                    mg = null,
+                    hint = e.message ?: "Unbekannter Fehler.",
+                    recommendedConcMgPerMl = null,
+                    solutionText = null,
+                    totalPreparedMl = null
+                )
+            }
         }
 
-        // Sonderfall: pädiatrische Reanimation Adrenalin – bei MANUELLER Ampulle auf 10 ml auffüllen
-        val needs10MlRule = selectedMedication == "Adrenalin" && selectedUseCase == "Reanimation" && years < 12
-
         val concForVolume = remember(
-            concFromSection, manualConcFlag, dosing.recommendedConcMgPerMl, ampMg, ampMl, needs10MlRule
+            concFromSection, manualConcFlag, dosing.recommendedConcMgPerMl, ampMg, ampMl
         ) {
-            if (manualConcFlag) {
-                if (needs10MlRule && ampMg != null) ampMg!! / 10.0 else concFromSection
-            } else {
-                dosing.recommendedConcMgPerMl ?: concFromSection
+            val mgLocal = ampMg
+            val mlLocal = ampMl
+            when {
+                // Manuelle Ampulle mit gültigen Werten
+                manualConcFlag && mgLocal != null && mlLocal != null && mlLocal > 0.0 -> mgLocal / mlLocal
+                // Regel liefert Arbeitskonzentration (z. B. 0,1 mg/ml nach 1:10)
+                dosing.recommendedConcMgPerMl != null -> dosing.recommendedConcMgPerMl
+                // Fallback: Standard aus Sektion
+                else -> concFromSection
             }
         }
         val volumeMl = remember(dosing.mg, concForVolume) { computeVolumeMl(dosing.mg, concForVolume) }
+
+        // Werte formatieren (kommabündig + ausreichend breite Wertespalte)
+        val doseText = dosing.mg?.let { "${format2(it)} mg" } ?: "—"
+        val volNum = volumeMl?.let { format2(it) }
+        val totalNum = dosing.totalPreparedMl?.let { format2(it) }
+        val (volPadded, totalPadded) = alignDecimalForTwo(volNum, totalNum)
+        val volText = volPadded?.let { "$it ml" } ?: "—"
+        val totalText = totalPadded?.let { "$it ml" } ?: "—"
+
+        // Lösung: mit Menge, wenn vorhanden (z. B. "10 ml NaCl 0,9 %")
+        val solutionText = when {
+            dosing.totalPreparedMl != null && dosing.solutionText != null ->
+                "${formatNoTrailingZeros(dosing.totalPreparedMl)} ml ${dosing.solutionText}"
+            dosing.solutionText != null -> dosing.solutionText
+            else -> "—"
+        }
 
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(Spacing.lg)) {
                 Text("Berechnung", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(Spacing.sm))
 
-                val doseText = dosing.mg?.let { "${format2(it)} mg" } ?: "—"
-                val volText = volumeMl?.let { "${format2(it)} ml" } ?: "—"
-
                 CalcTable(
-                    left = listOf("Dosierung" to doseText, "Lösung" to "—"),
-                    right = listOf("Volumen" to volText, "Gesamt" to "—")
+                    left = listOf("Dosierung" to doseText, "Lösung" to solutionText),
+                    right = listOf("Volumen" to volText, "Gesamt" to totalText)
                 )
 
                 Spacer(Modifier.height(Spacing.sm))
@@ -286,8 +324,10 @@ private fun CalcTable(
     left: List<Pair<String, String>>,
     right: List<Pair<String, String>>
 ) {
+    val valueStyleTabular: TextStyle = MaterialTheme.typography.bodyLarge.copy(fontFeatureSettings = "tnum")
+
     Row(Modifier.fillMaxWidth()) {
-        // Linke Hälfte (Labels und Werte in einer Flucht)
+        // Linke Hälfte
         Row(Modifier.weight(1f)) {
             Column(modifier = Modifier.width(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
                 left.forEachIndexed { i, (label, _) ->
@@ -300,7 +340,7 @@ private fun CalcTable(
                 left.forEachIndexed { i, (_, value) ->
                     Text(
                         value,
-                        style = MaterialTheme.typography.bodyLarge,
+                        style = valueStyleTabular,
                         maxLines = 1,
                         softWrap = false
                     )
@@ -309,7 +349,7 @@ private fun CalcTable(
             }
         }
         Spacer(Modifier.width(Spacing.sm))
-        // Rechte Hälfte (rechtsbündig, Labels und Werte jeweils in einer Flucht)
+        // Rechte Hälfte – Labels noch näher an den Werten, Werte-Spalte breit genug
         Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End) {
             Column(modifier = Modifier.width(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
                 right.forEachIndexed { i, (label, _) ->
@@ -322,12 +362,12 @@ private fun CalcTable(
                     if (i != right.lastIndex) Spacer(Modifier.height(4.dp))
                 }
             }
-            Spacer(Modifier.width(8.dp))
-            Column(modifier = Modifier.width(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
+            Spacer(Modifier.width(2.dp)) // noch enger an den Werten
+            Column(modifier = Modifier.widthIn(min = 128.dp)) { // etwas breiter, damit "ml" nicht abgeschnitten wird
                 right.forEachIndexed { i, (_, value) ->
                     Text(
                         value,
-                        style = MaterialTheme.typography.bodyLarge,
+                        style = valueStyleTabular,
                         textAlign = TextAlign.End,
                         modifier = Modifier.fillMaxWidth(),
                         maxLines = 1,
@@ -416,10 +456,8 @@ private fun AmpouleConcentrationSection(
         shape = MaterialTheme.shapes.medium
     ) {
         Column(Modifier.padding(Spacing.lg)) {
-            // Label oben an den Rand
             Text("Ampullenkonzentration", style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(Spacing.xs))
-            // Schalter darunter
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Manuell", style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.width(8.dp))
@@ -587,6 +625,34 @@ private fun estimateWeightKg(years: Int, months: Int): Double {
     }
 }
 
+// ---- Dezimal‑Ausrichtung ----
+
+/**
+ * Richtet zwei Werte so aus, dass das Dezimal‑Komma untereinander steht.
+ * Verwendet U+2007 (Figure Space) zum Links‑Padding.
+ */
+private fun alignDecimalForTwo(a: String?, b: String?): Pair<String?, String?> {
+    if (a == null && b == null) return null to null
+    val aInt = a?.substringBefore(',')?.filter { it.isDigit() } ?: ""
+    val bInt = b?.substringBefore(',')?.filter { it.isDigit() } ?: ""
+    val maxLen = maxOf(aInt.length, bInt.length)
+    fun pad(x: String?): String? {
+        if (x == null) return null
+        val intPart = x.substringBefore(',')
+        val rest = x.substringAfter(',', missingDelimiterValue = "")
+        val digitsOnly = intPart.filter { it.isDigit() }
+        val padCount = maxLen - digitsOnly.length
+        val pad = buildString { repeat(padCount) { append(' ') } } // Figure Space
+        return if (rest.isEmpty()) pad + intPart else pad + intPart + "," + rest
+    }
+    return pad(a) to pad(b)
+}
+
+private fun formatNoTrailingZeros(v: Double): String {
+    val s = format2(v)
+    return if (s.endsWith(",00")) s.substringBefore(",") else s
+}
+
 @Composable
 private fun HeaderRow(onMedicationsClick: () -> Unit, onMenuClick: () -> Unit) {
     Row(
@@ -661,7 +727,7 @@ private fun CompactSlider(
 
     val inactive = inactiveColor
     val active = activeColor
-    val thumbColor = MaterialTheme.colorScheme.onPrimary
+    val thumbColor = MaterialTheme.colorScheme.primary // Primary-Rot wie "Medikamente"
 
     Box(
         modifier
@@ -703,7 +769,7 @@ private fun CompactSlider(
                 cornerRadius = trackCorner
             )
 
-            // Thumb
+            // Thumb – Primary-Rot
             val thumbCorner = CornerRadius(trackHeightPx * 0.25f, trackHeightPx * 0.25f)
             val left = clampedCx - half
             drawRoundRect(
