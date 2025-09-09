@@ -259,7 +259,17 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
                 Spacer(Modifier.height(Spacing.sm))
                 Text("Hinweis", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(4.dp))
-                Text(dosing.hint, style = MaterialTheme.typography.bodyLarge)
+
+                // Zusätzliche Ausgabe der Maximaldosis (aus dem Hinweis extrahieren, falls enthalten)
+                val maxFromHint = remember(dosing.hint) {
+                    Regex("(?i)max\\.?\\s*([^.;\\n]+)").find(dosing.hint)?.groupValues?.getOrNull(1)?.trim()
+                }
+                val hintCombined = if (!dosing.maxDoseText.isNullOrBlank())
+                    listOf(dosing.hint, "Maximaldosis: ${dosing.maxDoseText}").joinToString("\n")
+                else dosing.hint
+
+                Text(hintCombined, style = MaterialTheme.typography.bodyLarge)
+
             }
         }
 
