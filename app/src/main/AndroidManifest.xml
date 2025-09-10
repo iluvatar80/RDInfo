@@ -11,6 +11,8 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.RDInfo">
+
+        <!-- Launcher-Activity -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -18,10 +20,14 @@
             android:theme="@style/Theme.RDInfo">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Editor-Activity (nicht exportiert) -->
+        <activity
+            android:name=".editor.MedicationEditorActivity"
+            android:exported="false" />
     </application>
 
 </manifest>

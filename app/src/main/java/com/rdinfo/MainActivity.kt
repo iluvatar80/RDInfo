@@ -1,9 +1,10 @@
 // Zielpfad: app/src/main/java/com/rdinfo/MainActivity.kt
-// Vollständige Datei – Excel‑Layout: links 2 Spalten (Label/Wert), mittig schmaler Spalt,
+// Vollständige Datei – Excel-Layout: links 2 Spalten (Label/Wert), mittig schmaler Spalt,
 // rechts 2 Spalten (Label bündig, Werte rechtsbündig, Dezimalen ausgerichtet), Einheiten „ml“ sichtbar.
 
 package com.rdinfo
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -31,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.stateDescription
@@ -40,8 +42,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.rdinfo.data.JsonStore
 import com.rdinfo.data.MedicationInfoSections
 import com.rdinfo.data.MedicationRepository
+import com.rdinfo.editor.MedicationEditorActivity
 import com.rdinfo.logic.DosingResult
 import com.rdinfo.logic.computeDoseFor
 import com.rdinfo.logic.computeVolumeMl
@@ -55,6 +59,12 @@ private val TintE6E0E9 = Color(0xFFE6E0E9)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Repository-Lazy-Loader: liest bevorzugt aus filesDir/medications.json, sonst assets
+        MedicationRepository.setLazyJsonLoader {
+            JsonStore.readWithAssetsFallback(applicationContext, assets)
+        }
+
         setContent {
             var isDark by rememberSaveable { mutableStateOf(false) }
             var currentScreen by rememberSaveable { mutableStateOf(Screen.MAIN) }
@@ -79,8 +89,31 @@ enum class Screen { MAIN, SETTINGS }
 
 enum class InfoTab { INDIKATION, KONTRAIND, WIRKUNG, NEBENWIRKUNG }
 
+// ---------- Overflow-Menü am 3-Punkte-Button ----------
+@Composable
+private fun OverflowMenu(onOpenSettings: () -> Unit, onOpenEditor: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }) {
+            MoreVertIcon()
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(text = { Text("Editor") }, onClick = {
+                open = false
+                onOpenEditor()
+            })
+            DropdownMenuItem(text = { Text("Settings") }, onClick = {
+                open = false
+                onOpenSettings()
+            })
+        }
+    }
+}
+
+// ---------- Hauptbildschirm ----------
 @Composable
 private fun MainScreen(onOpenSettings: () -> Unit) {
+    val ctx = LocalContext.current
     val scroll = rememberScrollState()
 
     Column(
@@ -90,7 +123,12 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
             .padding(horizontal = Spacing.lg)
     ) {
         Spacer(Modifier.height(Spacing.sm))
-        HeaderRow(onMedicationsClick = { /* TODO */ }, onMenuClick = onOpenSettings)
+        HeaderRow(
+            onMedicationsClick = { /* TODO */ },
+            onMenuClick = onOpenSettings, // Settings wie bisher
+            onOpenEditor = { ctx.startActivity(Intent(ctx, MedicationEditorActivity::class.java)) }
+        )
+
         HorizontalDivider(color = AppColors.SoftPink, thickness = 1.dp)
         Spacer(Modifier.height(Spacing.sm))
 
@@ -239,8 +277,8 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
         // Lösung: NBSP zwischen Zahl–ml und 0,9–% (kein Umbruch vor %)
         val solutionText = when {
             dosing.totalPreparedMl != null && dosing.solutionText != null ->
-                "${formatNoTrailingZeros(dosing.totalPreparedMl!!)} ml ${dosing.solutionText.replace(" %", " %" )}"
-            dosing.solutionText != null -> dosing.solutionText.replace(" %", " %")
+                "${formatNoTrailingZeros(dosing.totalPreparedMl!!)} ml " + dosing.solutionText.replace(" %", " %")
+            dosing.solutionText != null -> dosing.solutionText.replace(" %", " %")
             else -> "—"
         }
 
@@ -260,22 +298,18 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
                 Text("Hinweis", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(4.dp))
 
-                // Zusätzliche Ausgabe der Maximaldosis (aus dem Hinweis extrahieren, falls enthalten)
-                val maxFromHint = remember(dosing.hint) {
-                    Regex("(?i)max\\.?\\s*([^.;\\n]+)").find(dosing.hint)?.groupValues?.getOrNull(1)?.trim()
-                }
                 val hintCombined = if (!dosing.maxDoseText.isNullOrBlank())
                     listOf(dosing.hint, "Maximaldosis: ${dosing.maxDoseText}").joinToString("\n")
                 else dosing.hint
 
-                Text(hintCombined, style = MaterialTheme.typography.bodyLarge)
 
+                Text(hintCombined, style = MaterialTheme.typography.bodyLarge)
             }
         }
 
         Spacer(Modifier.height(Spacing.sm))
 
-        // --- Info‑Buttons + Text (Repository) ---
+        // --- Info-Buttons + Text (Repository) ---
         var activeTab by rememberSaveable { mutableStateOf(InfoTab.INDIKATION) }
         InfoTabsRow(activeTab = activeTab, onChange = { tab -> activeTab = tab })
         Spacer(Modifier.height(Spacing.xs))
@@ -521,8 +555,7 @@ private fun AmpouleConcentrationSection(
     }
 }
 
-// ---- Eingabe-/UI‑Hilfen ----
-
+// ---- Eingabe-/UI-Hilfen ----
 @Composable
 private fun CompactNumberField(
     value: String,
@@ -623,7 +656,7 @@ private fun parseWeightKg(text: String): Double? = text.replace(',', '.').toDoub
 private fun formatKg(v: Double): String = String.format(Locale.GERMANY, "%.1f", v)
 private fun format2(v: Double): String = String.format(Locale.GERMANY, "%.2f", v)
 
-/** Gewichtsschätzung (APLS‑basiert + monatsgenau) */
+/** Gewichtsschätzung (APLS-basiert + monatsgenau) */
 private fun estimateWeightKg(years: Int, months: Int): Double {
     val totalMonths = years * 12 + months
     if (totalMonths <= 12) return 4.0 + 0.5 * totalMonths
@@ -646,8 +679,7 @@ private fun estimateWeightKg(years: Int, months: Int): Double {
     }
 }
 
-// ---- Dezimal‑Ausrichtung ----
-
+// ---- Dezimal-Ausrichtung ----
 private fun alignDecimalForTwo(a: String?, b: String?): Pair<String?, String?> {
     if (a == null && b == null) return null to null
     val aInt = a?.substringBefore(',')?.filter { it.isDigit() } ?: ""
@@ -671,7 +703,11 @@ private fun formatNoTrailingZeros(v: Double): String {
 }
 
 @Composable
-private fun HeaderRow(onMedicationsClick: () -> Unit, onMenuClick: () -> Unit) {
+private fun HeaderRow(
+    onMedicationsClick: () -> Unit,
+    onMenuClick: () -> Unit,      // Settings
+    onOpenEditor: () -> Unit      // Editor
+) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -685,13 +721,10 @@ private fun HeaderRow(onMedicationsClick: () -> Unit, onMenuClick: () -> Unit) {
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
         ) { Text("Medikamente") }
 
-        IconButton(
-            onClick = onMenuClick,
-            modifier = Modifier.semantics {
-                contentDescription = "Mehr Optionen"
-                stateDescription = "Öffnet Einstellungen"
-            }
-        ) { MoreVertIcon() }
+        OverflowMenu(
+            onOpenSettings = onMenuClick,
+            onOpenEditor = onOpenEditor
+        )
     }
 }
 
@@ -830,7 +863,7 @@ private fun SettingsScreen(
         Spacer(Modifier.height(Spacing.lg))
 
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Dark‑Mode", style = MaterialTheme.typography.bodyLarge)
+            Text("Dark-Mode", style = MaterialTheme.typography.bodyLarge)
             Spacer(Modifier.weight(1f))
             Switch(checked = isDark, onCheckedChange = onToggleDark)
         }

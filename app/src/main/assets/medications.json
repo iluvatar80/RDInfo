@@ -1,0 +1,41 @@
+// app/src/main/assets/medications.json
+{
+  "medications": [
+    {
+      "id": "adrenalin",
+      "name": "Adrenalin",
+      "defaultConcentration": { "mg": 1.0, "ml": 1.0, "display": "1 mg / 1 ml" },
+      "useCases": ["REANIMATION"],
+      "sections": {
+        "indication": "Reanimation bei Kreislaufstillstand (z. B. asystol, PEA) und ggf. anhaltender schwerer Anaphylaxie nach Algorithmus.",
+        "contraindication": "Keine absolute Kontraindikation im Herz‑Kreislauf‑Stillstand; sonst Vorsicht u. a. bei KHK, Tachyarrhythmien, Hypertonie.",
+        "effect": "α₁: periphere Vasokonstriktion → erhöhte Koronar-/Zerebralperfusion; β₁: positiv inotrop/chronotrop; β₂: Bronchodilatation.",
+        "sideEffects": "Tachykardie, Arrhythmien, Hypertonie, Myokardischämie, Zittern, Angst, Kopfschmerz. Im Arrest klinisch nachrangig."
+      },
+      "dosing": [
+        {
+          "useCase": "REANIMATION",
+          "ageMaxYears": 11,
+          "doseMgPerKg": 0.01,
+          "recommendedConcMgPerMl": 0.1,
+          "route": "i.v.",
+          "solutionText": "NaCl 0,9 %",
+          "totalPreparedMl": 10.0,
+          "maxDoseMg": 1.0,
+          "maxDoseText": "max. 1 mg pro Gabe",
+          "note": "< 12J.: 0,01mg/ kg KG i.v. (1:10 verdünnt mit NaCl 0,9%) alle 4 Minuten"
+        },
+        {
+          "useCase": "REANIMATION",
+          "ageMinYears": 12,
+          "fixedDoseMg": 1.0,
+          "recommendedConcMgPerMl": 0.1,
+          "route": "i.v.",
+          "solutionText": "NaCl 0,9 %",
+          "totalPreparedMl": 10.0,
+          "note": "≥ 12J.: 1mg i.v. (1:10 verdünnt mit NaCl 0,9%) alle 4 Minuten"
+        }
+      ]
+    }
+  ]
+}
