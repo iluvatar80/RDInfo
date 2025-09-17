@@ -5,23 +5,10 @@
 **/.externalNativeBuild/
 captures/
 
-# Lokale Konfig
+# Lokales
 local.properties
 *.log
 
 # Android Studio / IntelliJ
 .idea/
 *.iml
-
-# (Optional: bestimmte IDE-Configs doch teilen)
-# !.idea/runConfigurations/
-# !.idea/codeStyles/
-# !.idea/inspectionProfiles/Project_Default.xml
-
-# Sonstiges
-.DS_Store
-Thumbs.db
-
-# Keystores (nur teilen, wenn bewusst!)
-*.jks
-*.keystore
