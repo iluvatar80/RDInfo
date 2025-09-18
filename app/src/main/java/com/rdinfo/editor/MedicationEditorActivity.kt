@@ -28,6 +28,9 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.max
+import com.rdinfo.prefs.ThemePrefs
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 
 
 // ------------ Datenmodelle (Editor) -----------------------------------------
@@ -65,7 +68,19 @@ private sealed class EditorDialog {
 class MedicationEditorActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { RDInfoTheme { EditorScreen(onClose = { finish() }) } }
+        setContent {
+            val ctx = LocalContext.current
+            val dark = remember { mutableStateOf(ThemePrefs.get(ctx)) }
+
+            RDInfoTheme(darkTheme = dark.value) {
+                Surface(color = MaterialTheme.colorScheme.background) {
+                    // Safe-Area, damit nichts in Notch/Navigation rutscht:
+                    Box(Modifier.statusBarsPadding().navigationBarsPadding()) {
+                        EditorScreen(onClose = { finish() })
+                    }
+                }
+            }
+        }
     }
 }
 

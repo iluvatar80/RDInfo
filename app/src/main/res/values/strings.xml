@@ -1,4 +1,5 @@
+<!-- File: app/src/main/res/values/strings.xml -->
 <resources>
+    <!-- Name, der im Launcher/Drawer angezeigt wird -->
     <string name="app_name">RDInfo</string>
-    <string name="title_activity_main">MainActivity</string>
 </resources>

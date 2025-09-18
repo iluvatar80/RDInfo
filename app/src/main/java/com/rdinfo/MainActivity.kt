@@ -1,7 +1,4 @@
 // File: app/src/main/java/com/rdinfo/MainActivity.kt
-// UI-Polish: einheitliche Button-Breiten in Settings, Safe-Area (status bar) Padding,
-// Slider-Thumb = runde Kapsel ohne weißen Strich, Info-Textfeld Farbangleichung.
-
 package com.rdinfo
 
 import android.content.Intent
@@ -21,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -31,16 +29,17 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -53,13 +52,97 @@ import com.rdinfo.editor.MedicationEditorActivity
 import com.rdinfo.logic.DosingResult
 import com.rdinfo.logic.computeDoseFor
 import com.rdinfo.logic.computeVolumeMl
+import com.rdinfo.prefs.ThemePrefs
 import com.rdinfo.ui.theme.AppColors
 import com.rdinfo.ui.theme.RDInfoTheme
 import com.rdinfo.ui.theme.Spacing
-import java.util.Locale
 import kotlinx.coroutines.launch
+import java.util.Locale
 
-private val TintE6E0E9 = Color(0xFFE6E0E9)
+/* ───────────────────────────  Farb-/Theme-Helfer  ────────────────────────── */
+
+// Neutraler Hellton (Light-Mode Panels – wie vorher)
+private val PanelLight = Color(0xFFE6E0E9)
+// Neutraler Dunkelton (Dark-Mode Panels – gewünschtes Grau)
+private val PanelDark = Color(0xFF2B2B2B)
+
+// App-weit Dark erkennen (nicht System, sondern aktuelles Theme)
+@Composable private fun isAppDark(): Boolean =
+    MaterialTheme.colorScheme.background.luminance() < 0.5f
+
+@Composable private fun panelContainerColor(): Color =
+    if (isAppDark()) PanelDark else PanelLight
+
+@Composable private fun panelContentColor(): Color =
+    if (isAppDark()) Color.White else MaterialTheme.colorScheme.onSurface
+
+// File: app/src/main/java/com/rdinfo/MainActivity.kt
+
+// ⬇️ Füge diese Composable unterhalb deiner anderen Hilfsfunktionen ein (z. B. nach DropdownChevron()).
+//    Sie behebt „Unresolved reference 'InfoTabsRow'“ und vermeidet Typ-Inferenz-Fehler.
+
+@Composable
+private fun InfoTabsRow(
+    activeTab: InfoTab,
+    onChange: (InfoTab) -> Unit
+) {
+    val shape = RoundedCornerShape(20.dp)
+    val buttonHeight = 36.dp
+    val labelStyle = MaterialTheme.typography.bodySmall
+
+    // feste Reihenfolge + kurze Labels (kein Umbruch)
+    val items: List<Pair<InfoTab, String>> = listOf(
+        InfoTab.INDIKATION to "Indikation",
+        InfoTab.KONTRAIND  to "Kontraindikation",
+        InfoTab.WIRKUNG    to "Wirkung",
+        InfoTab.NEBENWIRKUNG to "Nebenwirkung"
+    )
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        items.forEach { (tab, label) ->
+            val selected = tab == activeTab
+            val colors = if (selected) {
+                ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
+            } else {
+                ButtonDefaults.buttonColors(
+                    containerColor = Color.Transparent,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            OutlinedButton(
+                onClick = { onChange(tab) },
+                shape = shape,
+                colors = colors,
+                border = if (selected) null else ButtonDefaults.outlinedButtonBorder,
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                modifier = Modifier
+                    .height(buttonHeight)
+                    .weight(1f, fill = true)
+            ) {
+                Text(
+                    text = label,
+                    style = labelStyle,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}
+
+
+/* ───────────────────────────────  App-Setup  ─────────────────────────────── */
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -70,7 +153,8 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            var isDark by rememberSaveable { mutableStateOf(false) }
+            val ctx = LocalContext.current
+            var isDark by rememberSaveable { mutableStateOf(ThemePrefs.get(ctx)) }
             var currentScreen by rememberSaveable { mutableStateOf(Screen.MAIN) }
 
             RDInfoTheme(darkTheme = isDark) {
@@ -80,7 +164,10 @@ class MainActivity : ComponentActivity() {
                         Screen.SETTINGS -> SettingsScreen(
                             isDark = isDark,
                             onBack = { currentScreen = Screen.MAIN },
-                            onToggleDark = { isDark = it }
+                            onToggleDark = {
+                                isDark = it
+                                ThemePrefs.set(ctx, it)
+                            }
                         )
                     }
                 }
@@ -91,6 +178,25 @@ class MainActivity : ComponentActivity() {
 
 enum class Screen { MAIN, SETTINGS }
 enum class InfoTab { INDIKATION, KONTRAIND, WIRKUNG, NEBENWIRKUNG }
+
+/* ───────────────────────────  Reusable UI Bits  ──────────────────────────── */
+
+// Labels sollen NIE umbrechen (z. B. „Ampullenkonzentration“)
+@Composable
+private fun FieldLabel(
+    text: String,
+    modifier: Modifier = Modifier,
+    style: TextStyle = MaterialTheme.typography.bodySmall
+) {
+    Text(
+        text = text,
+        style = style,
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier
+    )
+}
 
 @Composable
 private fun OverflowMenu(onOpenSettings: () -> Unit, onOpenEditor: () -> Unit) {
@@ -104,6 +210,25 @@ private fun OverflowMenu(onOpenSettings: () -> Unit, onOpenEditor: () -> Unit) {
     }
 }
 
+// Panel-Card mit konsistenten Farben
+@Composable
+private fun CalculationCard(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    val cont = panelContainerColor()
+    val text = panelContentColor()
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = cont, contentColor = text),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        CompositionLocalProvider(LocalContentColor provides text) { content() }
+    }
+}
+
+/* ───────────────────────────────  Main Screen  ───────────────────────────── */
+
 @Composable
 private fun MainScreen(onOpenSettings: () -> Unit) {
     val ctx = LocalContext.current
@@ -113,7 +238,7 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
-            .statusBarsPadding() // ② Safe-Area: nichts mehr unter der Notch
+            .safeDrawingPadding()
             .verticalScroll(scroll)
             .padding(horizontal = Spacing.lg)
     ) {
@@ -140,11 +265,14 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
         // Gewicht
         val estimated = remember(years, months) { estimateWeightKg(years, months) }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Gewicht (kg)", style = MaterialTheme.typography.bodySmall)
+            FieldLabel("Gewicht (kg)")
             Spacer(Modifier.weight(1f))
             Text(
                 "Vorschlag: ${formatKg(estimated)} kg",
                 style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -163,7 +291,7 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
         Spacer(Modifier.height(Spacing.sm))
 
         // Medikament
-        Text("Medikament", style = MaterialTheme.typography.bodySmall)
+        FieldLabel("Medikament")
         Spacer(Modifier.height(Spacing.xs))
         val medications = remember(refreshTick) { MedicationRepository.getMedicationNames() }
         var selectedMedication by rememberSaveable { mutableStateOf(medications.first()) }
@@ -182,7 +310,7 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
         Spacer(Modifier.height(Spacing.sm))
 
         // Einsatzfall
-        Text("Einsatzfall", style = MaterialTheme.typography.bodySmall)
+        FieldLabel("Einsatzfall")
         Spacer(Modifier.height(Spacing.xs))
         val useCases = remember(selectedMedication, refreshTick) {
             MedicationRepository.getUseCaseNamesForMedication(selectedMedication)
@@ -264,9 +392,7 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
             }
         }
 
-        val concForVolume = remember(
-            concFromSection, manualConcFlag, dosing.recommendedConcMgPerMl, ampMg, ampMl
-        ) {
+        val concForVolume = remember(concFromSection, manualConcFlag, dosing.recommendedConcMgPerMl, ampMg, ampMl) {
             val mgLocal = ampMg
             val mlLocal = ampMl
             when {
@@ -291,9 +417,9 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
             else -> "—"
         }
 
-        Card(Modifier.fillMaxWidth()) {
+        CalculationCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(Spacing.lg)) {
-                Text("Berechnung", style = MaterialTheme.typography.titleMedium)
+                Text("Berechnung", style = MaterialTheme.typography.titleMedium, maxLines = 1, softWrap = false)
                 Spacer(Modifier.height(Spacing.sm))
 
                 CalcTable(
@@ -304,7 +430,7 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
                 Spacer(Modifier.height(Spacing.sm))
                 HorizontalDivider()
                 Spacer(Modifier.height(Spacing.sm))
-                Text("Hinweis", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FieldLabel("Hinweis")
                 Spacer(Modifier.height(4.dp))
 
                 val hintCombined = if (!dosing.maxDoseText.isNullOrBlank())
@@ -332,18 +458,25 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
             InfoTab.NEBENWIRKUNG -> sections?.sideEffects
         } ?: "—"
 
-        // ④ Farbe angleichen: wie andere Boxen (TintE6E0E9)
         Card(
-            colors = CardDefaults.cardColors(containerColor = TintE6E0E9),
+            colors = CardDefaults.cardColors(
+                containerColor = panelContainerColor(),
+                contentColor = panelContentColor()
+            ),
             shape = MaterialTheme.shapes.medium,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text(infoText, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(Spacing.lg))
+            CompositionLocalProvider(LocalContentColor provides panelContentColor()) {
+                Text(infoText, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(Spacing.lg))
+            }
         }
 
         Spacer(Modifier.height(Spacing.lg))
+        Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
     }
 }
+
+/* ──────────────────────────────── Panels ─────────────────────────────────── */
 
 @Composable
 private fun RouteSection(
@@ -354,141 +487,131 @@ private fun RouteSection(
 ) {
     Card(
         modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = TintE6E0E9),
+        colors = CardDefaults.cardColors(
+            containerColor = panelContainerColor(),
+            contentColor = panelContentColor()
+        ),
         shape = MaterialTheme.shapes.medium
     ) {
-        Column(Modifier.padding(Spacing.lg)) {
-            Text("Applikationsart", style = MaterialTheme.typography.bodySmall)
-            Spacer(Modifier.height(Spacing.xs))
-            CompactDropdownField(
-                selectedText = selected,
-                options = routes,
-                onSelect = onSelect,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-    }
-}
-
-@Composable
-private fun CalcTable(
-    left: List<Pair<String, String>>,
-    right: List<Pair<String, String>>,
-    labelWidthLeft: Dp = 70.dp,
-    valueWidthLeft: Dp = 140.dp,
-    labelWidthRight: Dp = 62.dp,
-    valueWidthRight: Dp = 62.dp,
-    middleGap: Dp = 16.dp,
-    rowGap: Dp = 4.dp
-) {
-    val valueStyleTabular: TextStyle = MaterialTheme.typography.bodyLarge.copy(fontFeatureSettings = "tnum")
-
-    Row(Modifier.fillMaxWidth()) {
-        Column(Modifier.width(labelWidthLeft)) {
-            left.forEachIndexed { i, (label, _) ->
-                Text(
-                    "$label:",
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(bottom = if (i != left.lastIndex) rowGap else 0.dp)
-                )
-            }
-        }
-        Column(Modifier.width(valueWidthLeft)) {
-            left.forEachIndexed { i, (label, value) ->
-                val isSolution = label == "Lösung"
-                Text(
-                    value,
-                    style = if (isSolution) MaterialTheme.typography.bodyLarge else valueStyleTabular,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(bottom = if (i != left.lastIndex) rowGap else 0.dp)
-                )
-            }
-        }
-        Column(
-            Modifier
-                .width(labelWidthRight + middleGap)
-                .padding(start = middleGap)
-        ) {
-            right.forEachIndexed { i, (label, _) ->
-                Text(
-                    "$label:",
-                    style = MaterialTheme.typography.bodyLarge,
-                    textAlign = TextAlign.End,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = if (i != right.lastIndex) rowGap else 0.dp)
-                )
-            }
-        }
-        Column(Modifier.width(valueWidthRight)) {
-            right.forEachIndexed { i, (_, value) ->
-                Text(
-                    value,
-                    style = valueStyleTabular,
-                    textAlign = TextAlign.End,
-                    maxLines = 1,
-                    softWrap = false,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = if (i != right.lastIndex) rowGap else 0.dp)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun InfoTabsRow(activeTab: InfoTab, onChange: (InfoTab) -> Unit) {
-    val shape = RoundedCornerShape(20.dp)
-    val buttonHeight = 36.dp
-    val labelStyle = MaterialTheme.typography.bodySmall
-
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        val items = listOf(
-            InfoTab.INDIKATION to ("Indikation" to 0.9f),
-            InfoTab.KONTRAIND to ("Kontraindikation" to 1.6f),
-            InfoTab.WIRKUNG to ("Wirkung" to 0.9f),
-            InfoTab.NEBENWIRKUNG to ("Nebenwirkung" to 1.2f)
-        )
-        items.forEach { (tab, pair) ->
-            val (label, weight) = pair
-            val selected = tab == activeTab
-            val colors = if (selected) {
-                ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                )
-            } else {
-                ButtonDefaults.buttonColors(
-                    containerColor = Color.Transparent,
-                    contentColor = MaterialTheme.colorScheme.onSurface
-                )
-            }
-
-            OutlinedButton(
-                onClick = { onChange(tab) },
-                shape = shape,
-                colors = colors,
-                border = if (selected) null else ButtonDefaults.outlinedButtonBorder,
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                modifier = Modifier
-                    .weight(weight)
-                    .height(buttonHeight)
-            ) {
-                Text(
-                    label,
-                    style = labelStyle,
-                    maxLines = 1,
-                    softWrap = false,
-                    textAlign = TextAlign.Center,
+        CompositionLocalProvider(LocalContentColor provides panelContentColor()) {
+            Column(Modifier.padding(Spacing.lg)) {
+                FieldLabel("Applikationsart")
+                Spacer(Modifier.height(Spacing.xs))
+                CompactDropdownField(
+                    selectedText = selected,
+                    options = routes,
+                    onSelect = onSelect,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
         }
     }
 }
+
+/* ─────────────────────  Tabelle stabil & fontScale-fest  ─────────────────── */
+
+// File: app/src/main/java/com/rdinfo/MainActivity.kt
+
+// ⬇️ Ersetze NUR die CalcTable(...) durch diese responsive Version.
+@Suppress("UnusedBoxWithConstraintsScope")
+@Composable
+private fun CalcTable(
+    left: List<Pair<String, String>>,
+    right: List<Pair<String, String>>,
+    // der mittlere Abstand wird automatisch verkleinert auf schmalen Displays
+    middleGapDefault: Dp = 16.dp,
+    rowGap: Dp = 4.dp
+) {
+    // FontScale in der Tabelle fixieren → identisches Layout auf allen Geräten
+    val density = LocalDensity.current
+    CompositionLocalProvider(LocalDensity provides Density(density.density, 1f)) {
+
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val W = maxWidth
+
+            // 🔧 Responsive Breiten – rechter Block wird bei wenig Platz schmaler,
+            //    damit Zahlen + Einheiten nicht abgeschnitten werden.
+            val isNarrow = W < 360.dp
+            val labelWidthRight: Dp = if (isNarrow) 68.dp else 80.dp
+            val valueWidthRight: Dp = if (isNarrow) 88.dp else 96.dp
+            val middleGap: Dp      = if (isNarrow) 8.dp  else middleGapDefault
+
+            val rightBlock = labelWidthRight + valueWidthRight + middleGap
+
+            val labelWidthLeft: Dp = if (isNarrow) 86.dp else 92.dp
+            val minLeftValueWidth: Dp = if (isNarrow) 128.dp else 140.dp
+            val valueWidthLeft: Dp = (W - rightBlock - labelWidthLeft).coerceAtLeast(minLeftValueWidth)
+
+            val valueStyleTabular: TextStyle =
+                MaterialTheme.typography.bodyLarge.copy(fontFeatureSettings = "tnum")
+
+            Row(Modifier.fillMaxWidth()) {
+
+                // ---- Linke Labels
+                Column(Modifier.width(labelWidthLeft)) {
+                    left.forEachIndexed { i, (label, _) ->
+                        Text(
+                            "$label:",
+                            style = MaterialTheme.typography.bodyLarge,
+                            maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(bottom = if (i != left.lastIndex) rowGap else 0.dp)
+                        )
+                    }
+                }
+
+                // ---- Linke Werte
+                Column(Modifier.width(valueWidthLeft)) {
+                    left.forEachIndexed { i, (label, value) ->
+                        val isSolution = label == "Lösung"
+                        Text(
+                            value,
+                            style = if (isSolution) MaterialTheme.typography.bodyLarge else valueStyleTabular,
+                            maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(bottom = if (i != left.lastIndex) rowGap else 0.dp)
+                        )
+                    }
+                }
+
+                // ---- Rechte Labels
+                Column(
+                    Modifier
+                        .width(labelWidthRight + middleGap)
+                        .padding(start = middleGap)
+                ) {
+                    right.forEachIndexed { i, (label, _) ->
+                        Text(
+                            "$label:",
+                            style = MaterialTheme.typography.bodyLarge,
+                            textAlign = TextAlign.End,
+                            maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = if (i != right.lastIndex) rowGap else 0.dp)
+                        )
+                    }
+                }
+
+                // ---- Rechte Werte (Zahlen + Einheiten, rechtsbündig)
+                Column(Modifier.width(valueWidthRight)) {
+                    right.forEachIndexed { i, (_, value) ->
+                        Text(
+                            value,
+                            style = valueStyleTabular,
+                            textAlign = TextAlign.End,
+                            maxLines = 1, softWrap = false, overflow = TextOverflow.Clip,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = if (i != right.lastIndex) rowGap else 0.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+/* ───────────────────── Eingabe-Controls dunkel & no-wrap ─────────────────── */
 
 @Composable
 private fun AmpouleConcentrationSection(
@@ -512,45 +635,50 @@ private fun AmpouleConcentrationSection(
 
     Card(
         modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = TintE6E0E9),
+        colors = CardDefaults.cardColors(
+            containerColor = panelContainerColor(),
+            contentColor = panelContentColor()
+        ),
         shape = MaterialTheme.shapes.medium
     ) {
-        Column(Modifier.padding(Spacing.lg)) {
-            Text("Ampullenkonzentration", style = MaterialTheme.typography.bodySmall)
-            Spacer(Modifier.height(Spacing.xs))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Manuell", style = MaterialTheme.typography.bodySmall)
-                Spacer(Modifier.width(8.dp))
-                Switch(checked = manual, onCheckedChange = { manual = it })
-            }
-            Spacer(Modifier.height(Spacing.xs))
-
-            if (!manual) {
-                Text(defaultText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
-            } else {
-                Row(verticalAlignment = Alignment.Top) {
-                    Column(Modifier.width(96.dp)) {
-                        Text("mg", style = MaterialTheme.typography.bodySmall)
-                        Spacer(Modifier.height(Spacing.xs))
-                        CompactNumberField(
-                            value = mgText,
-                            onValueChange = { t -> if (t.matches(Regex("^[0-9]{0,3}([.,][0-9]{0,2})?$"))) mgText = t }
-                        )
-                    }
-                    Spacer(Modifier.width(Spacing.sm))
-                    Column(Modifier.width(96.dp)) {
-                        Text("ml", style = MaterialTheme.typography.bodySmall)
-                        Spacer(Modifier.height(Spacing.xs))
-                        CompactNumberField(
-                            value = mlText,
-                            onValueChange = { t -> if (t.matches(Regex("^[0-9]{0,3}([.,][0-9]{0,2})?$"))) mlText = t }
-                        )
-                    }
+        CompositionLocalProvider(LocalContentColor provides panelContentColor()) {
+            Column(Modifier.padding(Spacing.lg)) {
+                FieldLabel("Ampullenkonzentration")
+                Spacer(Modifier.height(Spacing.xs))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    FieldLabel("Manuell", style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.width(8.dp))
+                    Switch(checked = manual, onCheckedChange = { manual = it })
                 }
-                val mg = mgText.replace(',', '.').toDoubleOrNull()
-                val ml = mlText.replace(',', '.').toDoubleOrNull()
-                val conc = if (mg != null && ml != null && ml > 0.0) mg / ml else null
-                LaunchedEffect(mgText, mlText) { onStateChanged(conc, true, mg, ml) }
+                Spacer(Modifier.height(Spacing.xs))
+
+                if (!manual) {
+                    Text(defaultText, style = MaterialTheme.typography.bodySmall, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                } else {
+                    Row(verticalAlignment = Alignment.Top) {
+                        Column(Modifier.width(96.dp)) {
+                            FieldLabel("mg")
+                            Spacer(Modifier.height(Spacing.xs))
+                            CompactNumberField(
+                                value = mgText,
+                                onValueChange = { t -> if (t.matches(Regex("^[0-9]{0,3}([.,][0-9]{0,2})?$"))) mgText = t }
+                            )
+                        }
+                        Spacer(Modifier.width(Spacing.sm))
+                        Column(Modifier.width(96.dp)) {
+                            FieldLabel("ml")
+                            Spacer(Modifier.height(Spacing.xs))
+                            CompactNumberField(
+                                value = mlText,
+                                onValueChange = { t -> if (t.matches(Regex("^[0-9]{0,3}([.,][0-9]{0,2})?$"))) mlText = t }
+                            )
+                        }
+                    }
+                    val mg = mgText.replace(',', '.').toDoubleOrNull()
+                    val ml = mlText.replace(',', '.').toDoubleOrNull()
+                    val conc = if (mg != null && ml != null && ml > 0.0) mg / ml else null
+                    LaunchedEffect(mgText, mlText) { onStateChanged(conc, true, mg, ml) }
+                }
             }
         }
     }
@@ -565,13 +693,15 @@ private fun CompactNumberField(
     val shape = MaterialTheme.shapes.small
     val borderColor = MaterialTheme.colorScheme.outline
     val textStyle = MaterialTheme.typography.bodyLarge
+    val bg = panelContainerColor()
+    val fg = panelContentColor()
 
     Box(
         modifier
             .height(36.dp)
             .border(1.dp, borderColor, shape)
             .clip(shape)
-            .background(TintE6E0E9)
+            .background(bg)
             .padding(horizontal = 12.dp, vertical = 6.dp)
             .then(modifier),
         contentAlignment = Alignment.CenterStart
@@ -580,7 +710,7 @@ private fun CompactNumberField(
             value = value,
             onValueChange = onValueChange,
             singleLine = true,
-            textStyle = textStyle.copy(color = MaterialTheme.colorScheme.onSurface),
+            textStyle = textStyle.copy(color = fg),
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
             modifier = Modifier.fillMaxWidth()
         )
@@ -599,13 +729,15 @@ private fun CompactDropdownField(
     var expanded by remember { mutableStateOf(false) }
     var fieldWidthPx by remember { mutableStateOf(0) }
     val fieldWidthDp = with(LocalDensity.current) { fieldWidthPx.toDp() }
+    val bg = panelContainerColor()
+    val fg = panelContentColor()
 
     Box(
         modifier
             .height(36.dp)
             .border(1.dp, borderColor, shape)
             .clip(shape)
-            .background(TintE6E0E9)
+            .background(bg)
             .onSizeChanged { fieldWidthPx = it.width }
             .then(modifier),
         contentAlignment = Alignment.CenterStart
@@ -618,8 +750,16 @@ private fun CompactDropdownField(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(selectedText, style = MaterialTheme.typography.bodyLarge)
-            DropdownChevron()
+            CompositionLocalProvider(LocalContentColor provides fg) {
+                Text(
+                    selectedText,
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
+                )
+                DropdownChevron()
+            }
         }
 
         DropdownMenu(
@@ -637,6 +777,126 @@ private fun CompactDropdownField(
     }
 }
 
+/* ───────────────────────── Slider (dunkel & kompakt) ─────────────────────── */
+
+@Composable
+private fun LabeledCompactSlider(
+    label: String,
+    value: Int,
+    range: IntRange,
+    onValueChange: (Int) -> Unit
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        FieldLabel("$label:")
+        Spacer(Modifier.width(Spacing.xs))
+        Text(value.toString(), style = MaterialTheme.typography.bodySmall, maxLines = 1, softWrap = false)
+    }
+    Spacer(Modifier.height(0.dp))
+    CompactSlider(value = value, onValueChange = onValueChange, range = range)
+    Spacer(Modifier.height(Spacing.xs))
+}
+
+@Composable
+private fun CompactSlider(
+    value: Int,
+    onValueChange: (Int) -> Unit,
+    range: IntRange,
+    modifier: Modifier = Modifier,
+    trackHeight: Dp = 14.dp,
+    activeColor: Color = panelContainerColor(),
+    inactiveColor: Color = panelContainerColor()
+) {
+    val density = LocalDensity.current
+    val trackHeightPx = with(density) { trackHeight.toPx() }
+    var widthPx by remember { mutableStateOf(0f) }
+
+    val min = range.first
+    val max = range.last
+    val span = (max - min).coerceAtLeast(1)
+
+    fun xFromValue(v: Int): Float {
+        val clamped = v.coerceIn(min, max)
+        val frac = (clamped - min).toFloat() / span
+        return frac * widthPx
+    }
+
+    fun valueFromX(x: Float): Int {
+        if (widthPx <= 0f) return value
+        val frac = (x / widthPx).coerceIn(0f, 1f)
+        return (min + frac * span).toInt()
+    }
+
+    val thumbColor = MaterialTheme.colorScheme.primary
+
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(40.dp)
+            .onSizeChanged { size -> widthPx = size.width.toFloat() }
+            .pointerInput(range) { detectTapGestures(onTap = { pos -> onValueChange(valueFromX(pos.x)) }) }
+            .pointerInput(range) {
+                detectDragGestures(
+                    onDragStart = { o -> onValueChange(valueFromX(o.x)) },
+                    onDrag = { change, _ -> onValueChange(valueFromX(change.position.x)) },
+                )
+            }
+            .semantics { stateDescription = "$value" },
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Canvas(Modifier.fillMaxWidth().height(trackHeight)) {
+            val trackCorner = CornerRadius(trackHeightPx / 2f, trackHeightPx / 2f)
+            val centerY = size.height / 2f
+            val top = centerY - trackHeightPx / 2f
+
+            drawRoundRect(
+                color = inactiveColor,
+                topLeft = Offset(0f, top),
+                size = Size(size.width, trackHeightPx),
+                cornerRadius = trackCorner
+            )
+
+            val thumbCenterX = xFromValue(value)
+            val thumbSize = trackHeightPx
+            val half = thumbSize / 2f
+            val clampedCx = thumbCenterX.coerceIn(half, size.width - half)
+            drawRoundRect(
+                color = activeColor,
+                topLeft = Offset(0f, top),
+                size = Size(clampedCx.coerceAtLeast(0f), trackHeightPx),
+                cornerRadius = trackCorner
+            )
+
+            drawRoundRect(
+                color = thumbColor,
+                topLeft = Offset(clampedCx - half, top),
+                size = Size(thumbSize, thumbSize),
+                cornerRadius = trackCorner
+            )
+        }
+    }
+}
+
+/* ─────────────────────────────  Misc UI  ─────────────────────────────────── */
+
+@Composable
+private fun MoreVertIcon(
+    modifier: Modifier = Modifier,
+    dotSize: Dp = 3.dp,
+    gap: Dp = 3.dp
+) {
+    val dot = with(LocalDensity.current) { dotSize.toPx() }
+    val spacing = with(LocalDensity.current) { (dotSize + gap).toPx() }
+    val dotColor = MaterialTheme.colorScheme.onSurface
+
+    Canvas(Modifier.size(24.dp).then(modifier)) {
+        val cx = size.width / 2f
+        val startY = size.height / 2f - spacing
+        repeat(3) { i ->
+            drawCircle(color = dotColor, radius = dot / 2f, center = Offset(cx, startY + i * spacing))
+        }
+    }
+}
+
 @Composable
 private fun DropdownChevron() {
     val chevronColor = MaterialTheme.colorScheme.onSurface
@@ -647,54 +907,6 @@ private fun DropdownChevron() {
         drawLine(color = chevronColor, start = Offset(midX - w * 0.25f, yTop), end = Offset(midX, yBottom), strokeWidth = 2f)
         drawLine(color = chevronColor, start = Offset(midX + w * 0.25f, yTop), end = Offset(midX, yBottom), strokeWidth = 2f)
     }
-}
-
-private fun parseWeightKg(text: String): Double? = text.replace(',', '.').toDoubleOrNull()
-private fun formatKg(v: Double): String = String.format(Locale.GERMANY, "%.1f", v)
-private fun format2(v: Double): String = String.format(Locale.GERMANY, "%.2f", v)
-
-private fun estimateWeightKg(years: Int, months: Int): Double {
-    val totalMonths = years * 12 + months
-    if (totalMonths <= 12) return 4.0 + 0.5 * totalMonths
-
-    fun aplsYearWeight(y: Int): Double = when (y) {
-        in 1..5 -> 2.0 * y + 8.0
-        in 6..12 -> 3.0 * y + 7.0
-        else -> 70.0
-    }
-
-    return when (years) {
-        in 1..11 -> {
-            val w0 = aplsYearWeight(years)
-            val w1 = aplsYearWeight(years + 1)
-            val frac = (months.coerceIn(0, 11)) / 12.0
-            w0 + (w1 - w0) * frac
-        }
-        12 -> aplsYearWeight(12)
-        else -> 70.0
-    }
-}
-
-private fun alignDecimalForTwo(a: String?, b: String?): Pair<String?, String?> {
-    if (a == null && b == null) return null to null
-    val aInt = a?.substringBefore(',')?.filter { it.isDigit() } ?: ""
-    val bInt = b?.substringBefore(',')?.filter { it.isDigit() } ?: ""
-    val maxLen = maxOf(aInt.length, bInt.length)
-    fun pad(x: String?): String? {
-        if (x == null) return null
-        val intPart = x.substringBefore(',')
-        val rest = x.substringAfter(',', missingDelimiterValue = "")
-        val digitsOnly = intPart.filter { it.isDigit() }
-        val padCount = maxLen - digitsOnly.length
-        val pad = buildString { repeat(padCount) { append(' ') } }
-        return if (rest.isEmpty()) pad + intPart else pad + intPart + "," + rest
-    }
-    return pad(a) to pad(b)
-}
-
-private fun formatNoTrailingZeros(v: Double): String {
-    val s = format2(v)
-    return if (s.endsWith(",00")) s.substringBefore(",") else s
 }
 
 @Composable
@@ -723,126 +935,7 @@ private fun HeaderRow(
     }
 }
 
-@Composable
-private fun LabeledCompactSlider(
-    label: String,
-    value: Int,
-    range: IntRange,
-    onValueChange: (Int) -> Unit
-) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("$label:", style = MaterialTheme.typography.bodySmall)
-        Spacer(Modifier.width(Spacing.xs))
-        Text(value.toString(), style = MaterialTheme.typography.bodySmall)
-    }
-    Spacer(Modifier.height(0.dp))
-    CompactSlider(value = value, onValueChange = onValueChange, range = range)
-    Spacer(Modifier.height(Spacing.xs))
-}
-
-@Composable
-private fun CompactSlider(
-    value: Int,
-    onValueChange: (Int) -> Unit,
-    range: IntRange,
-    modifier: Modifier = Modifier,
-    trackHeight: Dp = 14.dp,
-    activeColor: Color = TintE6E0E9,
-    inactiveColor: Color = TintE6E0E9
-) {
-    val density = LocalDensity.current
-    val trackHeightPx = with(density) { trackHeight.toPx() }
-    var widthPx by remember { mutableStateOf(0f) }
-
-    val min = range.first
-    val max = range.last
-    val span = (max - min).coerceAtLeast(1)
-
-    fun xFromValue(v: Int): Float {
-        val clamped = v.coerceIn(min, max)
-        val frac = (clamped - min).toFloat() / span
-        return frac * widthPx
-    }
-
-    fun valueFromX(x: Float): Int {
-        if (widthPx <= 0f) return value
-        val frac = (x / widthPx).coerceIn(0f, 1f)
-        return (min + frac * span).toInt()
-    }
-
-    val inactive = inactiveColor
-    val active = activeColor
-    val thumbColor = MaterialTheme.colorScheme.primary
-
-    Box(
-        modifier
-            .fillMaxWidth()
-            .height(40.dp)
-            .onSizeChanged { size -> widthPx = size.width.toFloat() }
-            .pointerInput(range) { detectTapGestures(onTap = { pos -> onValueChange(valueFromX(pos.x)) }) }
-            .pointerInput(range) {
-                detectDragGestures(
-                    onDragStart = { o -> onValueChange(valueFromX(o.x)) },
-                    onDrag = { change, _ -> onValueChange(valueFromX(change.position.x)) },
-                )
-            }
-            .semantics { stateDescription = "$value" },
-        contentAlignment = Alignment.CenterStart
-    ) {
-        Canvas(Modifier.fillMaxWidth().height(trackHeight)) {
-            val trackCorner = CornerRadius(trackHeightPx / 2f, trackHeightPx / 2f)
-            val centerY = size.height / 2f
-            val top = centerY - trackHeightPx / 2f
-
-            // Track
-            drawRoundRect(
-                color = inactive,
-                topLeft = Offset(0f, top),
-                size = Size(size.width, trackHeightPx),
-                cornerRadius = trackCorner
-            )
-
-            // Active bis Thumb
-            val thumbCenterX = xFromValue(value)
-            val thumbSize = trackHeightPx
-            val half = thumbSize / 2f
-            val clampedCx = thumbCenterX.coerceIn(half, size.width - half)
-            drawRoundRect(
-                color = active,
-                topLeft = Offset(0f, top),
-                size = Size(clampedCx.coerceAtLeast(0f), trackHeightPx),
-                cornerRadius = trackCorner
-            )
-
-            // ③ Thumb = gleich runde Kapsel wie Track, kein weißer Strich mehr
-            drawRoundRect(
-                color = thumbColor,
-                topLeft = Offset(clampedCx - half, top),
-                size = Size(thumbSize, thumbSize),
-                cornerRadius = trackCorner
-            )
-        }
-    }
-}
-
-@Composable
-private fun MoreVertIcon(
-    modifier: Modifier = Modifier,
-    dotSize: Dp = 3.dp,
-    gap: Dp = 3.dp
-) {
-    val dot = with(LocalDensity.current) { dotSize.toPx() }
-    val spacing = with(LocalDensity.current) { (dotSize + gap).toPx() }
-    val dotColor = MaterialTheme.colorScheme.onSurface
-
-    Canvas(Modifier.size(24.dp).then(modifier)) {
-        val cx = size.width / 2f
-        val startY = size.height / 2f - spacing
-        repeat(3) { i ->
-            drawCircle(color = dotColor, radius = dot / 2f, center = Offset(cx, startY + i * spacing))
-        }
-    }
-}
+/* ───────────────────────── Settings + Utils ──────────────────────────────── */
 
 @Composable
 private fun SettingsScreen(
@@ -887,7 +980,7 @@ private fun SettingsScreen(
         Column(
             Modifier
                 .padding(padding)
-                .statusBarsPadding() // ② Safe-Area
+                .safeDrawingPadding()
                 .fillMaxSize()
                 .padding(Spacing.lg)
         ) {
@@ -911,7 +1004,6 @@ private fun SettingsScreen(
             Text("Daten • Backup / Import / Export", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(Spacing.sm))
 
-            // ① Buttons gleich groß
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     onClick = {
@@ -955,6 +1047,9 @@ private fun SettingsScreen(
                     }
                 }
             }
+
+            Spacer(Modifier.height(Spacing.lg))
+            Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
         }
     }
 
@@ -1038,4 +1133,50 @@ private fun rememberOnResumeTick(): Int {
         onDispose { owner.lifecycle.removeObserver(observer) }
     }
     return tick
+}
+
+private fun parseWeightKg(text: String): Double? = text.replace(',', '.').toDoubleOrNull()
+private fun formatKg(v: Double): String = String.format(Locale.GERMANY, "%.1f", v)
+private fun format2(v: Double): String = String.format(Locale.GERMANY, "%.2f", v)
+
+private fun estimateWeightKg(years: Int, months: Int): Double {
+    val totalMonths = years * 12 + months
+    if (totalMonths <= 12) return 4.0 + 0.5 * totalMonths
+    fun aplsYearWeight(y: Int): Double = when (y) {
+        in 1..5 -> 2.0 * y + 8.0
+        in 6..12 -> 3.0 * y + 7.0
+        else -> 70.0
+    }
+    return when (years) {
+        in 1..11 -> {
+            val w0 = aplsYearWeight(years)
+            val w1 = aplsYearWeight(years + 1)
+            val frac = (months.coerceIn(0, 11)) / 12.0
+            w0 + (w1 - w0) * frac
+        }
+        12 -> aplsYearWeight(12)
+        else -> 70.0
+    }
+}
+
+private fun alignDecimalForTwo(a: String?, b: String?): Pair<String?, String?> {
+    if (a == null && b == null) return null to null
+    val aInt = a?.substringBefore(',')?.filter { it.isDigit() } ?: ""
+    val bInt = b?.substringBefore(',')?.filter { it.isDigit() } ?: ""
+    val maxLen = maxOf(aInt.length, bInt.length)
+    fun pad(x: String?): String? {
+        if (x == null) return null
+        val intPart = x.substringBefore(',')
+        val rest = x.substringAfter(',', missingDelimiterValue = "")
+        val digitsOnly = intPart.filter { it.isDigit() }
+        val padCount = maxLen - digitsOnly.length
+        val pad = buildString { repeat(padCount) { append(' ') } } // U+2007
+        return if (rest.isEmpty()) pad + intPart else pad + intPart + "," + rest
+    }
+    return pad(a) to pad(b)
+}
+
+private fun formatNoTrailingZeros(v: Double): String {
+    val s = format2(v)
+    return if (s.endsWith(",00")) s.substringBefore(",") else s
 }
