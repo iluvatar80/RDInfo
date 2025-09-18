@@ -1,116 +1,127 @@
-// Zielpfad: app/src/main/java/com/rdinfo/logic/DosingCalculator.kt
-// Vollständige Datei – nutzt Repository‑Regeln inkl. Verdünnung, Route und Gesamt‑Maximaldosis
-
+// File: app/src/main/java/com/rdinfo/logic/DosingCalculator.kt
 package com.rdinfo.logic
 
 import com.rdinfo.data.MedicationRepository
-import java.util.Locale
-import kotlin.math.min
+import com.rdinfo.data.DosingRule
+import com.rdinfo.data.useCaseKeyFromLabel
 
-/** Ergebnis der Dosisermittlung für die UI. */
+/** Ergebniscontainer für die Berechnung (UI konsumiert diese Felder). */
 data class DosingResult(
     val mg: Double?,
     val hint: String,
     val recommendedConcMgPerMl: Double?,
-    val solutionText: String?,          // z. B. "NaCl 0,9 %"
-    val totalPreparedMl: Double?,       // z. B. 10.0 → „Lösung: 10 ml …“
-    val maxDoseText: String? = null     // GESAMT‑Maximaldosis (nicht pro Gabe)
+    val solutionText: String?,
+    val totalPreparedMl: Double?,
+    val maxDoseText: String? = null
 )
 
-object DosingCalculator {
-    /**
-     * Ermittelt die Dosis regelgetrieben. Optional kann eine Route vorgegeben werden
-     * (wenn null, wird wie bisher ohne Routenfilter gewählt).
-     */
-    fun compute(
-        medicationName: String,
-        useCaseLabel: String,
-        ageYears: Int,
-        weightKg: Double,
-        route: String? = null
-    ): DosingResult {
-        val rule = if (route.isNullOrBlank()) {
-            MedicationRepository.findBestDosingRule(
-                medicationName = medicationName,
-                useCaseLabelOrKey = useCaseLabel,
-                ageYears = ageYears,
-                weightKg = weightKg
-            )
-        } else {
-            MedicationRepository.findBestDosingRuleWithRoute(
-                medicationName = medicationName,
-                useCaseLabelOrKey = useCaseLabel,
-                ageYears = ageYears,
-                weightKg = weightKg,
-                routeDisplayName = route
-            )
-        }
-
-        // Keine passende Regel gefunden → kurzer Hinweis
-        if (rule == null) return DosingResult(
-            mg = null,
-            hint = "Keine Dosisregel für $useCaseLabel bei $medicationName hinterlegt.",
-            recommendedConcMgPerMl = null,
-            solutionText = null,
-            totalPreparedMl = null,
-            maxDoseText = null
-        )
-
-        // Dosisbasis bestimmen
-        val baseMg = when {
-            rule.fixedDoseMg != null -> rule.fixedDoseMg
-            rule.doseMgPerKg != null -> rule.doseMgPerKg * weightKg
-            else -> null
-        }
-        // Obergrenze **pro Gabe** berücksichtigen (falls gepflegt) – nur Berechnung
-        val mg = baseMg?.let { b -> rule.maxDoseMg?.let { max -> min(b, max) } ?: b }
-
-        // Hinweistext (Route + Dosierschema + optionale Notiz; Gesamt‑Max separat)
-        val parts = buildList {
-            rule.route?.takeIf { it.isNotBlank() }?.let { add(it) }
-            when {
-                rule.doseMgPerKg != null -> add(String.format(Locale.GERMANY, "%.2f mg/kg", rule.doseMgPerKg))
-                rule.fixedDoseMg != null -> add(String.format(Locale.GERMANY, "%.2f mg", rule.fixedDoseMg))
-            }
-            rule.note?.takeIf { it.isNotBlank() }?.let { add(it) }
-        }
-        val hintText = parts.joinToString(": ").replace("mg/kg:", "mg/kg")
-
-        // **Nur** Gesamt‑Maximaldosis für die Anzeige bereitstellen
-        val totalMaxText = rule.totalMaxDoseText
-            ?: rule.totalMaxDoseMg?.let { String.format(Locale.GERMANY, "%.2f mg", it) }
-
-        return DosingResult(
-            mg = mg,
-            hint = if (hintText.isBlank()) "—" else hintText,
-            recommendedConcMgPerMl = rule.recommendedConcMgPerMl,
-            solutionText = rule.solutionText,
-            totalPreparedMl = rule.totalPreparedMl,
-            maxDoseText = totalMaxText
-        )
-    }
-}
-
-/** Bequemer Wrapper für bestehende Aufrufe ohne Route. */
+/**
+ * Berechnung OHNE feste Route – wählt die passendste Regel nur nach Med + Use‑Case.
+ */
 fun computeDoseFor(
     medication: String,
     useCase: String,
     weightKg: Double,
     ageYears: Int
-): DosingResult = DosingCalculator.compute(medication, useCase, ageYears, weightKg, route = null)
+): DosingResult {
+    val med = MedicationRepository.getMedicationByName(medication)
+    val ucKey = useCaseKeyFromLabel(useCase)
+    val rule = med?.dosing
+        ?.filter { it.useCase == ucKey }
+        ?.filter { matches(it, weightKg, ageYears) }
+        ?.maxByOrNull { specificity(it) }
 
-/** Wrapper mit benanntem Parameter `routeDisplayName` (Kompatibilität zur MainActivity). */
+    return buildResultFromRule(rule, medication, useCase, null, weightKg, ageYears)
+}
+
+/**
+ * Berechnung MIT gewählter Route. **Kein Fallback** auf andere Routen.
+ * Wenn für die gewählte Route keine Regel passt → leerer DosingResult mit Hinweis.
+ */
 fun computeDoseFor(
     medication: String,
     useCase: String,
     weightKg: Double,
     ageYears: Int,
-    routeDisplayName: String?
-): DosingResult = DosingCalculator.compute(medication, useCase, ageYears, weightKg, route = routeDisplayName)
+    routeDisplayName: String
+): DosingResult {
+    val med = MedicationRepository.getMedicationByName(medication)
+    val ucKey = useCaseKeyFromLabel(useCase)
+    val rule = med?.dosing
+        ?.filter { it.useCase == ucKey && it.route?.equals(routeDisplayName, ignoreCase = true) == true }
+        ?.filter { matches(it, weightKg, ageYears) }
+        ?.maxByOrNull { specificity(it) }
 
+    return buildResultFromRule(rule, medication, useCase, routeDisplayName, weightKg, ageYears)
+}
 
-/** ml‑Berechnung aus mg und mg/ml – gibt null zurück, wenn Eingaben fehlen/ungültig sind. */
+// --- Auswahl-Logik ---------------------------------------------------------
+private fun matches(r: DosingRule, weightKg: Double, ageYears: Int): Boolean {
+    r.ageMinYears?.let { if (ageYears < it) return false }
+    r.ageMaxYears?.let { if (ageYears > it) return false }
+    r.weightMinKg?.let { if (weightKg < it) return false }
+    r.weightMaxKg?.let { if (weightKg > it) return false }
+    return true
+}
+
+// „Spezifischere“ Regeln bevorzugen: mehr gesetzte Grenzen → höherer Score
+private fun specificity(r: DosingRule): Int {
+    var s = 0
+    if (r.ageMinYears != null) s++
+    if (r.ageMaxYears != null) s++
+    if (r.weightMinKg != null) s++
+    if (r.weightMaxKg != null) s++
+    if (r.route != null) s++
+    return s
+}
+
+private fun buildResultFromRule(
+    rule: DosingRule?,
+    medication: String,
+    useCase: String,
+    routeDisplayName: String?,
+    weightKg: Double,
+    ageYears: Int
+): DosingResult {
+    if (rule == null) {
+        val routePart = routeDisplayName?.let { " / $it" } ?: ""
+        val msg = "Keine passende Regel für $medication / $useCase$routePart bei Alter ${ageYears} J, Gewicht ${fmt1(weightKg)} kg."
+        return DosingResult(
+            mg = null,
+            hint = msg,
+            recommendedConcMgPerMl = null,
+            solutionText = null,
+            totalPreparedMl = null,
+            maxDoseText = null
+        )
+    }
+
+    // Dosis (mg)
+    val mg = when {
+        rule.doseMgPerKg != null -> rule.doseMgPerKg * weightKg
+        rule.fixedDoseMg != null -> rule.fixedDoseMg
+        else -> null
+    }
+
+    val hint = rule.note ?: ""
+
+    return DosingResult(
+        mg = mg,
+        hint = hint,
+        recommendedConcMgPerMl = rule.recommendedConcMgPerMl,
+        solutionText = rule.solutionText,
+        totalPreparedMl = rule.totalPreparedMl,
+        maxDoseText = rule.maxDoseText
+    )
+}
+
+/**
+ * Hilfsfunktion: Volumen in ml aus Dosis (mg) und Konzentration (mg/ml).
+ */
 fun computeVolumeMl(doseMg: Double?, concentrationMgPerMl: Double?): Double? {
-    if (doseMg == null || concentrationMgPerMl == null || concentrationMgPerMl <= 0.0) return null
+    if (doseMg == null || concentrationMgPerMl == null) return null
+    if (concentrationMgPerMl <= 0.0) return null
     return doseMg / concentrationMgPerMl
 }
+
+private fun fmt1(v: Double): String = String.format(java.util.Locale.GERMANY, "%.1f", v)

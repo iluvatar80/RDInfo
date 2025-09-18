@@ -1,4 +1,4 @@
-// Zielpfad: app/src/main/java/com/rdinfo/MainActivity.kt
+// File: app/src/main/java/com/rdinfo/MainActivity.kt
 // Vollständige Datei – Excel-Layout: links 2 Spalten (Label/Wert), mittig schmaler Spalt,
 // rechts 2 Spalten (Label bündig, Werte rechtsbündig, Dezimalen ausgerichtet), Einheiten „ml“ sichtbar.
 
@@ -42,6 +42,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.rdinfo.data.JsonStore
 import com.rdinfo.data.MedicationInfoSections
 import com.rdinfo.data.MedicationRepository
@@ -116,6 +119,9 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
     val ctx = LocalContext.current
     val scroll = rememberScrollState()
 
+    // NEU: Recompose‑Tick auf ON_RESUME, damit Repo-Listen (Med/UseCase/Route) nach Editor-Speichern aktualisieren
+    val refreshTick = rememberOnResumeTick()
+
     Column(
         Modifier
             .fillMaxSize()
@@ -170,8 +176,14 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
         // --- Medikament ---
         Text("Medikament", style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(Spacing.xs))
-        val medications = remember { MedicationRepository.getMedicationNames() }
+        val medications = remember(refreshTick) { MedicationRepository.getMedicationNames() }
         var selectedMedication by rememberSaveable { mutableStateOf(medications.first()) }
+        // Falls Auswahl nach Refresh nicht mehr existiert → auf erstes Element zurück
+        LaunchedEffect(medications, refreshTick) {
+            if (selectedMedication !in medications && medications.isNotEmpty()) {
+                selectedMedication = medications.first()
+            }
+        }
         CompactDropdownField(
             selectedText = selectedMedication,
             options = medications,
@@ -184,10 +196,16 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
         // --- Einsatzfall (abhängig von Medikament) ---
         Text("Einsatzfall", style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(Spacing.xs))
-        val useCases = remember(selectedMedication) {
+        val useCases = remember(selectedMedication, refreshTick) {
             MedicationRepository.getUseCaseNamesForMedication(selectedMedication)
         }
         var selectedUseCase by rememberSaveable(selectedMedication) { mutableStateOf(useCases.firstOrNull() ?: "") }
+        // Falls Auswahl nach Refresh nicht mehr existiert → korrigieren
+        LaunchedEffect(useCases, selectedMedication, refreshTick) {
+            if (selectedUseCase.isNotEmpty() && selectedUseCase !in useCases) {
+                selectedUseCase = useCases.firstOrNull() ?: ""
+            }
+        }
         CompactDropdownField(
             selectedText = selectedUseCase.ifEmpty { "—" },
             options = useCases,
@@ -203,11 +221,17 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
         var ampMg by rememberSaveable { mutableStateOf<Double?>(null) }
         var ampMl by rememberSaveable { mutableStateOf<Double?>(null) }
 
-        val routeOptions = remember(selectedMedication, selectedUseCase) {
+        val routeOptions = remember(selectedMedication, selectedUseCase, refreshTick) {
             MedicationRepository.getRouteNamesForMedicationUseCase(selectedMedication, selectedUseCase)
         }
         var selectedRoute by rememberSaveable(selectedMedication, selectedUseCase) {
             mutableStateOf(routeOptions.firstOrNull() ?: "i.v.")
+        }
+        // NEU: Wenn Routenliste sich ändert (z. B. Editor fügt „i.m.“ hinzu) → Auswahl validieren/anpassen
+        LaunchedEffect(routeOptions, selectedMedication, selectedUseCase, refreshTick) {
+            if (selectedRoute !in routeOptions) {
+                selectedRoute = routeOptions.firstOrNull() ?: selectedRoute
+            }
         }
 
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
@@ -868,4 +892,19 @@ private fun SettingsScreen(
             Switch(checked = isDark, onCheckedChange = onToggleDark)
         }
     }
+}
+
+// --- Lifecycle: Recompose bei ON_RESUME ------------------------------------
+@Composable
+private fun rememberOnResumeTick(): Int {
+    val owner = LocalLifecycleOwner.current
+    var tick by remember { mutableStateOf(0) }
+    DisposableEffect(owner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) tick++
+        }
+        owner.lifecycle.addObserver(observer)
+        onDispose { owner.lifecycle.removeObserver(observer) }
+    }
+    return tick
 }

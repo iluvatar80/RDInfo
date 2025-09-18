@@ -27,9 +27,11 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 
-// --- Simple in-memory editor model (nested) ---
+// ------------ Datenmodelle (Editor) -----------------------------------------
 private data class EditorMed(
     var name: String,
+    var defaultMg: Double?,
+    var defaultMl: Double?,
     val useCaseToRoutes: MutableMap<String, MutableList<String>> = mutableMapOf()
 )
 
@@ -50,7 +52,11 @@ private data class EditorRule(
     var note: String? = null
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
+private sealed class EditorDialog {
+    data class Name(val title: String, val initial: String, val onOk: (String) -> Unit) : EditorDialog()
+    data class UseCase(val existing: List<String>, val onOk: (String) -> Unit) : EditorDialog()
+}
+
 class MedicationEditorActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -62,28 +68,33 @@ class MedicationEditorActivity : ComponentActivity() {
 @Composable
 private fun EditorScreen(onClose: () -> Unit) {
     val ctx = LocalContext.current
-
-    // --- Snackbar (Feedback) ---
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    // --- Build initial editor state from Repository ---
+    // Seed: Repository → EditorMed
     val editorMeds = remember {
         val meds = MedicationRepository.getMedicationNames()
         mutableStateListOf<EditorMed>().apply {
-            meds.forEach { m ->
-                val ucLabels = MedicationRepository.getUseCaseNamesForMedication(m)
+            meds.forEach { mName ->
+                val med = MedicationRepository.getMedicationByName(mName)
+                val ucLabels = MedicationRepository.getUseCaseNamesForMedication(mName)
                 val map = mutableMapOf<String, MutableList<String>>()
                 ucLabels.forEach { uc ->
-                    val routes = MedicationRepository.getRouteNamesForMedicationUseCase(m, uc)
+                    val routes = MedicationRepository.getRouteNamesForMedicationUseCase(mName, uc)
                     map[uc] = routes.toMutableList()
                 }
-                add(EditorMed(name = m, useCaseToRoutes = map))
+                add(
+                    EditorMed(
+                        name = mName,
+                        defaultMg = med?.defaultConcentration?.mg,
+                        defaultMl = med?.defaultConcentration?.ml,
+                        useCaseToRoutes = map
+                    )
+                )
             }
         }
     }
 
-    // --- Current selections ---
     var selectedMed by remember { mutableStateOf(editorMeds.firstOrNull()?.name) }
     val allLabel = "Alle"
     var selectedUseCase by remember(selectedMed) { mutableStateOf(allLabel) }
@@ -93,121 +104,10 @@ private fun EditorScreen(onClose: () -> Unit) {
     fun currentUseCases(): List<String> = currentMed()?.useCaseToRoutes?.keys?.sorted() ?: emptyList()
     fun currentRoutes(): List<String> = currentMed()?.useCaseToRoutes?.get(selectedUseCase)?.sorted() ?: emptyList()
 
-    // --- Dialog state ---
-    var showNewMedDialog by remember { mutableStateOf(false) }
-    var showNewUseCaseDialog by remember { mutableStateOf(false) }
-    var showNewRouteDialog by remember { mutableStateOf(false) }
-
-    var showRenameMedDialog by remember { mutableStateOf(false) }
-    var showRenameUseCaseDialog by remember { mutableStateOf(false) }
-    var showRenameRouteDialog by remember { mutableStateOf(false) }
-
-    var showDeleteMedConfirm by remember { mutableStateOf(false) }
-    var showDeleteUseCaseConfirm by remember { mutableStateOf(false) }
-    var showDeleteRouteConfirm by remember { mutableStateOf(false) }
-
-    // --- Add handlers ---
-    fun addMedication(nameRaw: String) {
-        val name = nameRaw.trim()
-        if (name.isEmpty()) return
-        if (editorMeds.any { it.name.equals(name, ignoreCase = true) }) return
-        editorMeds.add(EditorMed(name = name))
-        selectedMed = name
-        selectedUseCase = allLabel
-        selectedRoute = allLabel
-    }
-
-    fun addUseCase(labelRaw: String) {
-        val med = currentMed() ?: return
-        val label = labelRaw.trim()
-        if (label.isEmpty()) return
-        if (med.useCaseToRoutes.keys.any { it.equals(label, true) }) return
-        // nur vordefinierte Einsatzfälle zulassen (Enum-basiert)
-        if (useCaseKeyFromLabel(label) == null) {
-            // Feedback
-            scope.launch { snackbar.showSnackbar("Unbekannter Einsatzfall: $label") }
-            return
-        }
-        med.useCaseToRoutes[label] = mutableListOf()
-        selectedUseCase = label
-        selectedRoute = allLabel
-    }
-
-    fun addRoute(nameRaw: String) {
-        val med = currentMed() ?: return
-        val uc = selectedUseCase.takeIf { it != allLabel } ?: return
-        val name = nameRaw.trim()
-        if (name.isEmpty()) return
-        val list = med.useCaseToRoutes[uc] ?: mutableListOf<String>().also { med.useCaseToRoutes[uc] = it }
-        if (list.any { it.equals(name, true) }) return
-        list.add(name)
-        selectedRoute = name
-    }
-
-    // --- Rename handlers ---
-    fun renameMedication(newNameRaw: String) {
-        val newName = newNameRaw.trim()
-        val med = currentMed() ?: return
-        if (newName.isEmpty() || editorMeds.any { it.name.equals(newName, true) }) return
-        med.name = newName
-        selectedMed = newName
-    }
-
-    fun renameUseCase(newLabelRaw: String) {
-        val med = currentMed() ?: return
-        val uc = selectedUseCase.takeIf { it != allLabel } ?: return
-        val newLabel = newLabelRaw.trim()
-        if (newLabel.isEmpty() || med.useCaseToRoutes.keys.any { it.equals(newLabel, true) }) return
-        if (useCaseKeyFromLabel(newLabel) == null) return
-        val routes = med.useCaseToRoutes.remove(uc)
-        med.useCaseToRoutes[newLabel] = routes ?: mutableListOf()
-        selectedUseCase = newLabel
-    }
-
-    fun renameRoute(newNameRaw: String) {
-        val med = currentMed() ?: return
-        val uc = selectedUseCase.takeIf { it != allLabel } ?: return
-        val newName = newNameRaw.trim()
-        if (newName.isEmpty()) return
-        val routes = med.useCaseToRoutes[uc] ?: return
-        if (routes.any { it.equals(newName, true) }) return
-        val idx = routes.indexOfFirst { it == selectedRoute }
-        if (idx >= 0) {
-            routes[idx] = newName
-            selectedRoute = newName
-        }
-    }
-
-    // --- Delete handlers ---
-    fun deleteMedication() {
-        val idx = editorMeds.indexOfFirst { it.name == selectedMed }
-        if (idx >= 0) editorMeds.removeAt(idx)
-        selectedMed = editorMeds.firstOrNull()?.name
-        selectedUseCase = allLabel
-        selectedRoute = allLabel
-    }
-
-    fun deleteUseCase() {
-        val med = currentMed() ?: return
-        val uc = selectedUseCase.takeIf { it != allLabel } ?: return
-        med.useCaseToRoutes.remove(uc)
-        selectedUseCase = allLabel
-        selectedRoute = allLabel
-    }
-
-    fun deleteRoute() {
-        val med = currentMed() ?: return
-        val uc = selectedUseCase.takeIf { it != allLabel } ?: return
-        val routes = med.useCaseToRoutes[uc] ?: return
-        routes.removeAll { it == selectedRoute }
-        selectedRoute = allLabel
-    }
-
-    // --- Rules editor state (per med/useCase/route) ---
+    // Regel‑State
     val rulesState = remember { mutableStateMapOf<String, SnapshotStateList<EditorRule>>() }
     fun rulesKey(m: String, uc: String, r: String) = "$m|$uc|$r"
-
-    fun getOrSeedRulesList(m: String, uc: String, r: String): SnapshotStateList<EditorRule> {
+    fun rulesList(m: String, uc: String, r: String): SnapshotStateList<EditorRule> {
         val key = rulesKey(m, uc, r)
         return rulesState.getOrPut(key) {
             val medObj = MedicationRepository.getMedicationByName(m)
@@ -236,34 +136,31 @@ private fun EditorScreen(onClose: () -> Unit) {
         }
     }
 
+    // Dialog-State (zentral)
+    var dialog by remember { mutableStateOf<EditorDialog?>(null) }
+
     val scroll = rememberScrollState()
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Editor") },
-                actions = {
-                    TextButton(onClick = onClose) { Text("Schließen") }
-                }
+                actions = { TextButton(onClick = onClose) { Text("Schließen") } }
             )
         },
         bottomBar = {
             BottomAppBar {
                 Spacer(Modifier.weight(1f))
-                OutlinedButton(onClick = { /* TODO: discard changes */ }) { Text("Verwerfen") }
+                TextButton(onClick = { onClose() }) { Text("Abbrechen") }
                 Spacer(Modifier.width(8.dp))
                 Button(onClick = {
-                    // Persistenz: JSON schreiben und Repository neu laden
                     val json = buildJsonFromEditor(editorMeds, rulesState)
                     val result = JsonStore.writeWithBackup(ctx, json)
                     if (result.isSuccess) {
-                        // Sofort in den laufenden Prozess laden UND Lazy-Loader beibehalten
                         MedicationRepository.loadFromJsonString(json)
                         MedicationRepository.setLazyJsonLoader { JsonStore.readWithAssetsFallback(ctx, ctx.assets) }
                         scope.launch { snackbar.showSnackbar("Gespeichert") }
-                    } else {
-                        scope.launch { snackbar.showSnackbar("Fehler beim Speichern") }
-                    }
+                    } else scope.launch { snackbar.showSnackbar("Fehler beim Speichern") }
                 }) { Text("Speichern") }
             }
         },
@@ -276,180 +173,164 @@ private fun EditorScreen(onClose: () -> Unit) {
                 .verticalScroll(scroll)
                 .padding(16.dp)
         ) {
-            // --- Kontext-Bar: Auswahl & CRUD-Buttons (Buttons UNTER den Feldern) ---
             ContextBar(
                 meds = editorMeds.map { it.name }.sorted(),
                 selectedMed = selectedMed,
                 onMedChange = { selectedMed = it; selectedUseCase = allLabel; selectedRoute = allLabel },
-                onMedNew = { showNewMedDialog = true },
-                onMedRename = { if (selectedMed != null) showRenameMedDialog = true },
-                onMedDelete = { if (selectedMed != null) showDeleteMedConfirm = true },
+                onMedNew = {
+                    val base = "Neues Medikament"
+                    var name = base; var i = 1
+                    while (editorMeds.any { it.name.equals(name, true) }) { name = "$base ${i++}" }
+                    editorMeds.add(EditorMed(name, null, null, mutableMapOf()))
+                    selectedMed = name
+                },
+                onMedRename = {
+                    val med = currentMed() ?: return@ContextBar
+                    dialog = EditorDialog.Name("Medikament umbenennen", med.name) { newName ->
+                        if (newName.isNotBlank() && editorMeds.none { it.name.equals(newName, true) }) {
+                            med.name = newName; selectedMed = newName
+                        }
+                    }
+                },
+                onMedDelete = {
+                    val idx = editorMeds.indexOfFirst { it.name == selectedMed }
+                    if (idx >= 0) editorMeds.removeAt(idx)
+                    selectedMed = editorMeds.firstOrNull()?.name
+                    selectedUseCase = allLabel; selectedRoute = allLabel
+                },
 
                 useCases = listOf(allLabel) + currentUseCases(),
                 selectedUseCase = selectedUseCase,
-                onUseCaseChange = { selectedUseCase = it; selectedRoute = allLabel },
-                onUseCaseNew = { if (selectedMed != null) showNewUseCaseDialog = true },
-                onUseCaseRename = { if (selectedUseCase != allLabel) showRenameUseCaseDialog = true },
-                onUseCaseDelete = { if (selectedUseCase != allLabel) showDeleteUseCaseConfirm = true },
+                onUseCaseChange = { selectedUseCase = it ?: allLabel; selectedRoute = allLabel },
+                onUseCaseNew = {
+                    val med = currentMed() ?: return@ContextBar
+                    dialog = EditorDialog.UseCase(currentUseCases()) { uc ->
+                        if (med.useCaseToRoutes.keys.any { it.equals(uc, true) }) return@UseCase
+                        med.useCaseToRoutes[uc] = mutableListOf(); selectedUseCase = uc; selectedRoute = allLabel
+                    }
+                },
+                onUseCaseRename = {
+                    val med = currentMed() ?: return@ContextBar
+                    val uc = selectedUseCase.takeIf { it != allLabel } ?: return@ContextBar
+                    dialog = EditorDialog.Name("Einsatzfall umbenennen", uc) { newLabel ->
+                        if (newLabel.isBlank() || useCaseKeyFromLabel(newLabel) == null) return@Name
+                        val routes = med.useCaseToRoutes.remove(uc) ?: mutableListOf()
+                        if (med.useCaseToRoutes.keys.none { it.equals(newLabel, true) }) {
+                            med.useCaseToRoutes[newLabel] = routes; selectedUseCase = newLabel
+                        }
+                    }
+                },
+                onUseCaseDelete = {
+                    val med = currentMed() ?: return@ContextBar
+                    val uc = selectedUseCase.takeIf { it != allLabel } ?: return@ContextBar
+                    med.useCaseToRoutes.remove(uc); selectedUseCase = allLabel; selectedRoute = allLabel
+                },
 
                 routes = listOf(allLabel) + (if (selectedUseCase == allLabel) emptyList() else currentRoutes()),
                 selectedRoute = selectedRoute,
-                onRouteChange = { selectedRoute = it },
-                onRouteNew = { if (selectedMed != null && selectedUseCase != allLabel) showNewRouteDialog = true },
-                onRouteRename = { if (selectedRoute != allLabel) showRenameRouteDialog = true },
-                onRouteDelete = { if (selectedRoute != allLabel) showDeleteRouteConfirm = true }
+                onRouteChange = { selectedRoute = it ?: allLabel },
+                onRouteNew = {
+                    val med = currentMed() ?: return@ContextBar
+                    val uc = selectedUseCase.takeIf { it != allLabel } ?: return@ContextBar
+                    dialog = EditorDialog.Name("Neue Applikationsart", "") { name ->
+                        val list = med.useCaseToRoutes[uc] ?: mutableListOf<String>().also { med.useCaseToRoutes[uc] = it }
+                        if (list.none { it.equals(name, true) }) { list.add(name); selectedRoute = name }
+                    }
+                },
+                onRouteRename = {
+                    val med = currentMed() ?: return@ContextBar
+                    val uc = selectedUseCase.takeIf { it != allLabel } ?: return@ContextBar
+                    val r = selectedRoute.takeIf { it != allLabel } ?: return@ContextBar
+                    dialog = EditorDialog.Name("Applikationsart umbenennen", r) { newName ->
+                        val list = med.useCaseToRoutes[uc] ?: return@Name
+                        if (list.none { it.equals(newName, true) }) {
+                            val idx = list.indexOfFirst { it == r }; if (idx >= 0) list[idx] = newName; selectedRoute = newName
+                        }
+                    }
+                },
+                onRouteDelete = {
+                    val med = currentMed() ?: return@ContextBar
+                    val uc = selectedUseCase.takeIf { it != allLabel } ?: return@ContextBar
+                    val r = selectedRoute.takeIf { it != allLabel } ?: return@ContextBar
+                    med.useCaseToRoutes[uc]?.removeAll { it == r }; selectedRoute = allLabel
+                }
             )
 
             Spacer(Modifier.height(12.dp))
 
-            // --- Abschnitte ---
+            // --- Ampullenkonzentration (JETZT EDITIERBAR) -------------------
             SectionCard(title = "Ampullenkonzentration") {
-                val medObj = selectedMed?.let { MedicationRepository.getMedicationByName(it) }
-                val display = remember(medObj) {
-                    val c = medObj?.defaultConcentration
-                    if (c == null) "—" else {
-                        val mg = c.mg.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() }
-                        val ml = c.ml.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() }
-                        "$mg mg / $ml ml"
-                    }
-                }
+                val med = currentMed()
+                var mgText by remember(med?.name) { mutableStateOf(med?.defaultMg?.toString() ?: "") }
+                var mlText by remember(med?.name) { mutableStateOf(med?.defaultMl?.toString() ?: "") }
+
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TopFieldLabel("Anzeige (z. B. 1 mg / 1 ml)")
-                    OutlinedTextField(
-                        value = display,
-                        onValueChange = { },
-                        modifier = Modifier.fillMaxWidth(),
-                        readOnly = true
+                    LabeledNumberField(
+                        label = "Ampulle mg",
+                        value = mgText,
+                        onValueChange = {
+                            mgText = it; med?.defaultMg = it.replace(',', '.').toDoubleOrNull()
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                    LabeledNumberField(
+                        label = "Ampulle ml",
+                        value = mlText,
+                        onValueChange = {
+                            mlText = it; med?.defaultMl = it.replace(',', '.').toDoubleOrNull()
+                        },
+                        modifier = Modifier.weight(1f)
                     )
                 }
+                val ratio = remember(med?.defaultMg, med?.defaultMl) {
+                    val mg = med?.defaultMg; val ml = med?.defaultMl
+                    if (mg != null && ml != null && ml > 0.0) mg / ml else null
+                }
+                if (ratio != null) Text("= ${"%.3f".format(ratio)} mg/ml", style = MaterialTheme.typography.labelSmall)
             }
 
-            // --- Regeln ---
+            // --- Regeln -----------------------------------------------------
             RulesSection(
                 selectedMed = selectedMed,
                 selectedUseCase = selectedUseCase,
                 selectedRoute = selectedRoute,
-                getRulesList = { m, uc, r -> getOrSeedRulesList(m, uc, r) },
+                getRulesList = { m, uc, r -> rulesList(m, uc, r) },
                 allUseCases = { currentUseCases() },
                 routesProvider = { uc -> currentMed()?.useCaseToRoutes?.get(uc)?.sorted() ?: emptyList() },
                 onMoveRule = { fromUc, fromRoute, toUc, toRoute, index ->
-                    val med = selectedMed ?: return@RulesSection
-                    val src = getOrSeedRulesList(med, fromUc, fromRoute)
+                    val medName = selectedMed ?: return@RulesSection
+                    val src = rulesList(medName, fromUc, fromRoute)
                     if (index !in src.indices) return@RulesSection
                     val item = src.removeAt(index)
-                    val target = getOrSeedRulesList(med, toUc, toRoute)
+                    val target = rulesList(medName, toUc, toRoute)
                     item.useCase = useCaseKeyFromLabel(toUc) ?: item.useCase
                     item.route = toRoute
                     target.add(item)
                 }
             )
 
-            // --- Info-Texte (read-only placeholder) ---
-            val info = remember(selectedMed) { selectedMed?.let { MedicationRepository.getInfoSections(it) } }
-            SectionCard(title = "Indikation") {
-                TopFieldLabel("Indikation")
-                OutlinedTextField(
-                    value = info?.indication ?: "",
-                    onValueChange = { },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2,
-                    readOnly = true
-                )
-            }
-            SectionCard(title = "Kontraindikation") {
-                TopFieldLabel("Kontraindikation")
-                OutlinedTextField(
-                    value = info?.contraindication ?: "",
-                    onValueChange = { },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2,
-                    readOnly = true
-                )
-            }
-            SectionCard(title = "Wirkung") {
-                TopFieldLabel("Wirkung")
-                OutlinedTextField(
-                    value = info?.effect ?: "",
-                    onValueChange = { },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2,
-                    readOnly = true
-                )
-            }
-            SectionCard(title = "Nebenwirkungen") {
-                TopFieldLabel("Nebenwirkungen")
-                OutlinedTextField(
-                    value = info?.sideEffects ?: "",
-                    onValueChange = { },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2,
-                    readOnly = true
-                )
-            }
-
             Spacer(Modifier.height(48.dp))
         }
     }
 
-    // --- Create dialogs ---
-    if (showNewMedDialog) NameInputDialog(
-        title = "Neues Medikament",
-        onConfirm = { addMedication(it); showNewMedDialog = false },
-        onDismiss = { showNewMedDialog = false }
-    )
-    if (showNewUseCaseDialog) UseCasePickerDialog(
-        existing = currentUseCases(),
-        onConfirm = { addUseCase(it); showNewUseCaseDialog = false },
-        onDismiss = { showNewUseCaseDialog = false }
-    )
-    if (showNewRouteDialog) NameInputDialog(
-        title = "Neue Applikationsart",
-        onConfirm = { addRoute(it); showNewRouteDialog = false },
-        onDismiss = { showNewRouteDialog = false }
-    )
-
-    // --- Rename dialogs ---
-    if (showRenameMedDialog) NameInputDialog(
-        title = "Medikament umbenennen",
-        initial = selectedMed ?: "",
-        onConfirm = { renameMedication(it); showRenameMedDialog = false },
-        onDismiss = { showRenameMedDialog = false }
-    )
-    if (showRenameUseCaseDialog) NameInputDialog(
-        title = "Einsatzfall umbenennen",
-        initial = selectedUseCase,
-        onConfirm = { renameUseCase(it); showRenameUseCaseDialog = false },
-        onDismiss = { showRenameUseCaseDialog = false }
-    )
-    if (showRenameRouteDialog) NameInputDialog(
-        title = "Applikationsart umbenennen",
-        initial = selectedRoute,
-        onConfirm = { renameRoute(it); showRenameRouteDialog = false },
-        onDismiss = { showRenameRouteDialog = false }
-    )
-
-    // --- Delete confirms ---
-    if (showDeleteMedConfirm) ConfirmDialog(
-        title = "Medikament löschen?",
-        text = "Dies entfernt auch alle zugehörigen Einsatzfälle und Routen (im Editor-State).",
-        onConfirm = { deleteMedication(); showDeleteMedConfirm = false },
-        onDismiss = { showDeleteMedConfirm = false }
-    )
-    if (showDeleteUseCaseConfirm) ConfirmDialog(
-        title = "Einsatzfall löschen?",
-        text = "Dies entfernt auch alle zugehörigen Routen (im Editor-State).",
-        onConfirm = { deleteUseCase(); showDeleteUseCaseConfirm = false },
-        onDismiss = { showDeleteUseCaseConfirm = false }
-    )
-    if (showDeleteRouteConfirm) ConfirmDialog(
-        title = "Applikationsart löschen?",
-        text = null,
-        onConfirm = { deleteRoute(); showDeleteRouteConfirm = false },
-        onDismiss = { showDeleteRouteConfirm = false }
-    )
+    // --- Dialoge rendern ----------------------------------------------------
+    when (val d = dialog) {
+        is EditorDialog.Name -> NameInputDialog(
+            title = d.title,
+            initial = d.initial,
+            onConfirm = { dialog = null; d.onOk(it) },
+            onDismiss = { dialog = null }
+        )
+        is EditorDialog.UseCase -> UseCasePickerDialog(
+            existing = d.existing,
+            onConfirm = { dialog = null; d.onOk(it) },
+            onDismiss = { dialog = null }
+        )
+        null -> {}
+    }
 }
 
-// ---- Kontext-Bar -----------------------------------------------------------
+// ------------ Kontext-Leiste (Dropdowns + Buttons) -------------------------
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ContextBar(
@@ -462,20 +343,19 @@ private fun ContextBar(
 
     useCases: List<String>,
     selectedUseCase: String,
-    onUseCaseChange: (String) -> Unit,
+    onUseCaseChange: (String?) -> Unit,
     onUseCaseNew: () -> Unit,
     onUseCaseRename: () -> Unit,
     onUseCaseDelete: () -> Unit,
 
     routes: List<String>,
     selectedRoute: String,
-    onRouteChange: (String) -> Unit,
+    onRouteChange: (String?) -> Unit,
     onRouteNew: () -> Unit,
     onRouteRename: () -> Unit,
     onRouteDelete: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        // Medikament (volle Feldbreite)
         Row(Modifier.fillMaxWidth()) {
             ExposedDropdown(
                 topLabel = "Medikament",
@@ -491,13 +371,12 @@ private fun ContextBar(
             OutlinedButton(onClick = onMedDelete, enabled = selectedMed != null) { Text("Löschen") }
         }
 
-        // Einsatzfall (gleich breit)
         Row(Modifier.fillMaxWidth()) {
             ExposedDropdown(
                 topLabel = "Einsatzfall",
                 options = useCases,
                 selected = selectedUseCase,
-                onSelected = { onUseCaseChange(it ?: "Alle") },
+                onSelected = onUseCaseChange,
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -507,13 +386,12 @@ private fun ContextBar(
             OutlinedButton(onClick = onUseCaseDelete, enabled = selectedUseCase != "Alle") { Text("Löschen") }
         }
 
-        // Applikationsart (unter Einsatzfall, gleich breit)
         Row(Modifier.fillMaxWidth()) {
             ExposedDropdown(
                 topLabel = "Applikationsart",
                 options = routes,
                 selected = selectedRoute,
-                onSelected = { onRouteChange(it ?: "Alle") },
+                onSelected = onRouteChange,
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -542,27 +420,22 @@ private fun ExposedDropdown(
         ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
             OutlinedTextField(
                 value = text,
-                onValueChange = { text = it },
+                onValueChange = { },
                 readOnly = true,
                 modifier = Modifier.menuAnchor().fillMaxWidth()
             )
             ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 options.forEach { opt ->
-                    DropdownMenuItem(
-                        text = { Text(opt) },
-                        onClick = {
-                            expanded = false
-                            text = opt
-                            onSelected(opt)
-                        }
-                    )
+                    DropdownMenuItem(text = { Text(opt) }, onClick = {
+                        expanded = false; text = opt; onSelected(opt)
+                    })
                 }
             }
         }
     }
 }
 
-// ---- Regeln ----------------------------------------------------------------
+// ------------ Regeln --------------------------------------------------------
 @Composable
 private fun RulesSection(
     selectedMed: String?,
@@ -573,82 +446,26 @@ private fun RulesSection(
     routesProvider: (String) -> List<String>,
     onMoveRule: (fromUc: String, fromRoute: String, toUc: String, toRoute: String, index: Int) -> Unit
 ) {
-    val med = selectedMed
-    val uc = selectedUseCase
-    val r = selectedRoute
-
-    SectionCard(title = "Regeln") {
+    val med = selectedMed; val uc = selectedUseCase; val r = selectedRoute
+    SectionCard(title = "Dosierungsregeln") {
         if (med == null || uc == "Alle" || r == "Alle") {
-            Text("Bitte Medikament, Einsatzfall und Applikationsart wählen, um Regeln zu bearbeiten.")
+            Text("Bitte Medikament, Einsatzfall und Applikationsart wählen.")
         } else {
             val rules = remember(med, uc, r) { getRulesList(med, uc, r) }
-
-            // Move-Dialog State
-            var moveIndex by remember { mutableStateOf<Int?>(null) }
-            var targetUc by remember { mutableStateOf(uc) }
-            var targetRoute by remember(targetUc) { mutableStateOf(r) }
-
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = {
-                    // Neue leere Regel mit Defaults
-                    val ucKey = useCaseKeyFromLabel(uc) ?: return@OutlinedButton
-                    rules.add(
-                        EditorRule(useCase = ucKey, route = r)
-                    )
-                }) { Text("Neu") }
-
-                if (rules.isEmpty()) {
-                    Text("Keine Regeln vorhanden.")
-                } else {
-                    rules.forEachIndexed { idx, rule ->
-                        RuleCard(
-                            index = idx + 1,
-                            rule = rule,
-                            onDuplicate = { rules.add(idx + 1, rule.copy()) },
-                            onDelete = { rules.removeAt(idx) },
-                            onMove = { moveIndex = idx; targetUc = uc; targetRoute = r }
-                        )
-                    }
-                }
-
-                if (moveIndex != null) {
-                    AlertDialog(
-                        onDismissRequest = { moveIndex = null },
-                        title = { Text("Regel verschieben") },
-                        text = {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                // Ziel-Einsatzfall
-                                ExposedDropdown(
-                                    topLabel = "Ziel: Einsatzfall",
-                                    options = allUseCases(),
-                                    selected = targetUc,
-                                    onSelected = { sel ->
-                                        targetUc = sel ?: uc
-                                        val routes = routesProvider(targetUc)
-                                        targetRoute = routes.firstOrNull() ?: r
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                // Ziel-Route
-                                ExposedDropdown(
-                                    topLabel = "Ziel: Applikationsart",
-                                    options = routesProvider(targetUc),
-                                    selected = targetRoute,
-                                    onSelected = { sel -> targetRoute = sel ?: r },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
-                        },
-                        confirmButton = {
-                            Button(onClick = {
-                                val idx = moveIndex ?: return@Button
-                                onMoveRule(uc, r, targetUc, targetRoute, idx)
-                                moveIndex = null
-                            }) { Text("Verschieben") }
-                        },
-                        dismissButton = { TextButton(onClick = { moveIndex = null }) { Text("Abbrechen") } }
-                    )
-                }
+            OutlinedButton(onClick = {
+                val ucKey = useCaseKeyFromLabel(uc) ?: return@OutlinedButton
+                rules.add(EditorRule(useCase = ucKey, route = r))
+            }) { Text("Neu") }
+            Spacer(Modifier.height(8.dp))
+            if (rules.isEmpty()) Text("Keine Regeln vorhanden.")
+            rules.forEachIndexed { idx, rule ->
+                RuleCard(
+                    index = idx + 1,
+                    rule = rule,
+                    onDuplicate = { rules.add(idx + 1, rule.copy()) },
+                    onDelete = { rules.removeAt(idx) }
+                )
+                Spacer(Modifier.height(8.dp))
             }
         }
     }
@@ -659,8 +476,7 @@ private fun RuleCard(
     index: Int,
     rule: EditorRule,
     onDuplicate: () -> Unit,
-    onDelete: () -> Unit,
-    onMove: () -> Unit
+    onDelete: () -> Unit
 ) {
     var ageMinText by remember(rule) { mutableStateOf(rule.ageMinYears?.toString() ?: "") }
     var ageMaxText by remember(rule) { mutableStateOf(rule.ageMaxYears?.toString() ?: "") }
@@ -677,52 +493,44 @@ private fun RuleCard(
 
     ElevatedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp)) {
-            val routeLabel = rule.route ?: "(alle Routen)"
-            Text("Regel $index — ${useCaseLabel(rule.useCase)} / $routeLabel", style = MaterialTheme.typography.titleSmall)
+            Text("Regel $index", style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(8.dp))
-            // Geltungsbereich
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                LabeledNumberField(label = "Alter min (J)", value = ageMinText, onValueChange = { ageMinText = it; rule.ageMinYears = it.toIntOrNull() }, modifier = Modifier.weight(1f))
-                LabeledNumberField(label = "Alter max (J)", value = ageMaxText, onValueChange = { ageMaxText = it; rule.ageMaxYears = it.toIntOrNull() }, modifier = Modifier.weight(1f))
+                LabeledNumberField("Alter min (J)", ageMinText, { ageMinText = it; rule.ageMinYears = it.toIntOrNull() }, Modifier.weight(1f))
+                LabeledNumberField("Alter max (J)", ageMaxText, { ageMaxText = it; rule.ageMaxYears = it.toIntOrNull() }, Modifier.weight(1f))
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                LabeledNumberField(label = "Gewicht min (kg)", value = wtMinText, onValueChange = { wtMinText = it; rule.weightMinKg = it.replace(',', '.').toDoubleOrNull() }, modifier = Modifier.weight(1f))
-                LabeledNumberField(label = "Gewicht max (kg)", value = wtMaxText, onValueChange = { wtMaxText = it; rule.weightMaxKg = it.replace(',', '.').toDoubleOrNull() }, modifier = Modifier.weight(1f))
+                LabeledNumberField("Gewicht min (kg)", wtMinText, { wtMinText = it; rule.weightMinKg = it.replace(',', '.').toDoubleOrNull() }, Modifier.weight(1f))
+                LabeledNumberField("Gewicht max (kg)", wtMaxText, { wtMaxText = it; rule.weightMaxKg = it.replace(',', '.').toDoubleOrNull() }, Modifier.weight(1f))
             }
-            // Dosierung
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                LabeledNumberField(label = "doseMgPerKg (mg/kg)", value = dosePerKgText, onValueChange = {
+                LabeledNumberField("doseMgPerKg (mg/kg)", dosePerKgText, {
                     dosePerKgText = it; rule.doseMgPerKg = it.replace(',', '.').toDoubleOrNull(); if (it.isNotBlank()) { fixedDoseText = ""; rule.fixedDoseMg = null }
-                }, modifier = Modifier.weight(1f))
-                LabeledNumberField(label = "fixedDoseMg (mg)", value = fixedDoseText, onValueChange = {
+                }, Modifier.weight(1f))
+                LabeledNumberField("fixedDoseMg (mg)", fixedDoseText, {
                     fixedDoseText = it; rule.fixedDoseMg = it.replace(',', '.').toDoubleOrNull(); if (it.isNotBlank()) { dosePerKgText = ""; rule.doseMgPerKg = null }
-                }, modifier = Modifier.weight(1f))
+                }, Modifier.weight(1f))
             }
-            // Lösung / Verdünnung
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                LabeledNumberField(label = "empf. Konz. (mg/ml)", value = concText, onValueChange = { concText = it; rule.recommendedConcMgPerMl = it.replace(',', '.').toDoubleOrNull() }, modifier = Modifier.weight(1f))
-                LabeledNumberField(label = "totalPreparedMl (ml)", value = totalMlText, onValueChange = { totalMlText = it; rule.totalPreparedMl = it.replace(',', '.').toDoubleOrNull() }, modifier = Modifier.weight(1f))
+                LabeledNumberField("empf. Konz. (mg/ml)", concText, { concText = it; rule.recommendedConcMgPerMl = it.replace(',', '.').toDoubleOrNull() }, Modifier.weight(1f))
+                LabeledNumberField("totalPreparedMl (ml)", totalMlText, { totalMlText = it; rule.totalPreparedMl = it.replace(',', '.').toDoubleOrNull() }, Modifier.weight(1f))
             }
-            LabeledTextField(label = "solutionText", value = solutionText, onValueChange = { solutionText = it; rule.solutionText = it }, modifier = Modifier.fillMaxWidth())
-            // Maximaldosis
+            LabeledTextField("solutionText", solutionText, { solutionText = it; rule.solutionText = it }, Modifier.fillMaxWidth())
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                LabeledNumberField(label = "maxDoseMg (mg)", value = maxDoseTextVal, onValueChange = { maxDoseTextVal = it; rule.maxDoseMg = it.replace(',', '.').toDoubleOrNull() }, modifier = Modifier.weight(1f))
-                LabeledTextField(label = "maxDoseText", value = maxDoseFreeText, onValueChange = { maxDoseFreeText = it; rule.maxDoseText = it }, modifier = Modifier.weight(1f))
+                LabeledNumberField("maxDoseMg (mg)", maxDoseTextVal, { maxDoseTextVal = it; rule.maxDoseMg = it.replace(',', '.').toDoubleOrNull() }, Modifier.weight(1f))
+                LabeledTextField("maxDoseText", maxDoseFreeText, { maxDoseFreeText = it; rule.maxDoseText = it }, Modifier.weight(1f))
             }
-            LabeledTextField(label = "Hinweis (note)", value = noteText, onValueChange = { noteText = it; rule.note = it }, modifier = Modifier.fillMaxWidth())
-
+            LabeledTextField("Hinweis (note)", noteText, { noteText = it; rule.note = it }, Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = onDuplicate) { Text("Duplizieren") }
                 OutlinedButton(onClick = onDelete) { Text("Löschen") }
-                Spacer(Modifier.weight(1f))
-                OutlinedButton(onClick = onMove) { Text("Verschieben…") }
             }
         }
     }
 }
 
-// ---- UI helpers ------------------------------------------------------------
+// ------------ UI‑Hilfen ----------------------------------------------------
 @Composable
 private fun SectionCard(title: String, content: @Composable ColumnScope.() -> Unit) {
     ElevatedCard(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
@@ -760,15 +568,14 @@ private fun LabeledNumberField(label: String, value: String, onValueChange: (Str
     }
 }
 
+// ------------ Dialoge -------------------------------------------------------
 @Composable
 private fun NameInputDialog(title: String, initial: String = "", onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
     var text by remember { mutableStateOf(initial) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
-        text = {
-            LabeledTextField(label = "Name", value = text, onValueChange = { text = it })
-        },
+        text = { LabeledTextField(label = "Name", value = text, onValueChange = { text = it }) },
         confirmButton = { Button(onClick = { onConfirm(text) }) { Text("OK") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
     )
@@ -784,38 +591,22 @@ private fun UseCasePickerDialog(existing: List<String>, onConfirm: (String) -> U
         onDismissRequest = onDismiss,
         title = { Text("Neuer Einsatzfall") },
         text = {
-            if (options.isEmpty()) {
-                Text("Alle Einsatzfälle sind bereits vorhanden.")
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    options.forEach { opt ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            RadioButton(selected = (opt == selected), onClick = { selected = opt })
-                            Text(opt)
-                        }
+            if (options.isEmpty()) Text("Alle Einsatzfälle sind bereits vorhanden.")
+            else Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                options.forEach { opt ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        RadioButton(selected = (opt == selected), onClick = { selected = opt })
+                        Text(opt)
                     }
                 }
             }
         },
-        confirmButton = {
-            Button(onClick = { selected?.let(onConfirm) }, enabled = !selected.isNullOrBlank()) { Text("OK") }
-        },
+        confirmButton = { Button(onClick = { selected?.let(onConfirm) }, enabled = !selected.isNullOrBlank()) { Text("OK") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
     )
 }
 
-@Composable
-private fun ConfirmDialog(title: String, text: String?, onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { if (text != null) Text(text) },
-        confirmButton = { Button(onClick = onConfirm) { Text("Löschen") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
-    )
-}
-
-// ---- Persistenz/JSON -------------------------------------------------------
+// ------------ Persistenz: JSON bauen ---------------------------------------
 private fun slugifyId(name: String): String = name.lowercase()
     .replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
     .replace(Regex("[^a-z0-9]+"), "-").trim('-')
@@ -860,9 +651,18 @@ private fun buildJsonFromEditor(
     meds.forEach { m ->
         val repoMed = MedicationRepository.getMedicationByName(m.name)
         val medObj = JSONObject().put("id", slugifyId(m.name)).put("name", m.name)
-        repoMed?.defaultConcentration?.let { c ->
-            medObj.put("defaultConcentration", JSONObject().put("mg", c.mg).put("ml", c.ml).put("display", "${c.mg} mg / ${c.ml} ml"))
+
+        // Default-Konzentration schreiben (aus Editor; wenn leer → Repo-Werte beibehalten)
+        val mg = m.defaultMg ?: repoMed?.defaultConcentration?.mg
+        val ml = m.defaultMl ?: repoMed?.defaultConcentration?.ml
+        if (mg != null && ml != null) {
+            val display = "${trim0(mg)} mg / ${trim0(ml)} ml"
+            medObj.put("defaultConcentration", JSONObject().apply {
+                put("mg", mg); put("ml", ml); put("mgPerMl", mg / ml); put("display", display)
+            })
         }
+
+        // Info-Sections unverändert aus Repo übernehmen (Editor-UI pflegt diese noch nicht)
         repoMed?.sections?.let { s ->
             medObj.put("sections", JSONObject().apply {
                 s.indication?.let { put("indication", it) }
@@ -871,10 +671,14 @@ private fun buildJsonFromEditor(
                 s.sideEffects?.let { put("sideEffects", it) }
             })
         }
+
+        // UseCases-Aggregat
         val useCaseKeys = linkedSetOf<UseCaseKey>()
         m.useCaseToRoutes.keys.forEach { lbl -> useCaseKeyFromLabel(lbl)?.let(useCaseKeys::add) }
         rulesForMedName(m.name).forEach { useCaseKeys.add(it.useCase) }
         val ucArr = JSONArray(); useCaseKeys.forEach { ucArr.put(ucToString(it)) }; medObj.put("useCases", ucArr)
+
+        // Dosing
         val dosingArr = JSONArray()
         rulesForMedName(m.name).forEach { r ->
             dosingArr.put(JSONObject().apply {
@@ -902,3 +706,4 @@ private fun buildJsonFromEditor(
 }
 
 private fun ucToString(key: UseCaseKey): String = key.name
+private fun trim0(d: Double): String = if (d % 1.0 == 0.0) d.toInt().toString() else d.toString()
