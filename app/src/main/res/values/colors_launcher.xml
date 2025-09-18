@@ -1,0 +1,5 @@
+<!-- File: app/src/main/res/values/colors_launcher.xml -->
+<resources>
+    <!-- Hintergrundfarbe für das Adaptive-Icon -->
+    <color name="ic_launcher_bg">#2B2B2B</color>
+</resources>
