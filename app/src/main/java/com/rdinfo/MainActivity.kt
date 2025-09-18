@@ -1,12 +1,13 @@
 // File: app/src/main/java/com/rdinfo/MainActivity.kt
-// Vollständige Datei – Excel-Layout: links 2 Spalten (Label/Wert), mittig schmaler Spalt,
-// rechts 2 Spalten (Label bündig, Werte rechtsbündig, Dezimalen ausgerichtet), Einheiten „ml“ sichtbar.
+// UI-Polish: einheitliche Button-Breiten in Settings, Safe-Area (status bar) Padding,
+// Slider-Thumb = runde Kapsel ohne weißen Strich, Info-Textfeld Farbangleichung.
 
 package com.rdinfo
 
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -56,6 +57,7 @@ import com.rdinfo.ui.theme.AppColors
 import com.rdinfo.ui.theme.RDInfoTheme
 import com.rdinfo.ui.theme.Spacing
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 private val TintE6E0E9 = Color(0xFFE6E0E9)
 
@@ -63,7 +65,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Repository-Lazy-Loader: liest bevorzugt aus filesDir/medications.json, sonst assets
         MedicationRepository.setLazyJsonLoader {
             JsonStore.readWithAssetsFallback(applicationContext, assets)
         }
@@ -89,56 +90,44 @@ class MainActivity : ComponentActivity() {
 }
 
 enum class Screen { MAIN, SETTINGS }
-
 enum class InfoTab { INDIKATION, KONTRAIND, WIRKUNG, NEBENWIRKUNG }
 
-// ---------- Overflow-Menü am 3-Punkte-Button ----------
 @Composable
 private fun OverflowMenu(onOpenSettings: () -> Unit, onOpenEditor: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
-        IconButton(onClick = { open = true }) {
-            MoreVertIcon()
-        }
+        IconButton(onClick = { open = true }) { MoreVertIcon() }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            DropdownMenuItem(text = { Text("Editor") }, onClick = {
-                open = false
-                onOpenEditor()
-            })
-            DropdownMenuItem(text = { Text("Settings") }, onClick = {
-                open = false
-                onOpenSettings()
-            })
+            DropdownMenuItem(text = { Text("Editor") }, onClick = { open = false; onOpenEditor() })
+            DropdownMenuItem(text = { Text("Settings") }, onClick = { open = false; onOpenSettings() })
         }
     }
 }
 
-// ---------- Hauptbildschirm ----------
 @Composable
 private fun MainScreen(onOpenSettings: () -> Unit) {
     val ctx = LocalContext.current
     val scroll = rememberScrollState()
-
-    // NEU: Recompose‑Tick auf ON_RESUME, damit Repo-Listen (Med/UseCase/Route) nach Editor-Speichern aktualisieren
     val refreshTick = rememberOnResumeTick()
 
     Column(
         Modifier
             .fillMaxSize()
+            .statusBarsPadding() // ② Safe-Area: nichts mehr unter der Notch
             .verticalScroll(scroll)
             .padding(horizontal = Spacing.lg)
     ) {
         Spacer(Modifier.height(Spacing.sm))
         HeaderRow(
-            onMedicationsClick = { /* TODO */ },
-            onMenuClick = onOpenSettings, // Settings wie bisher
+            onMedicationsClick = { /* optional */ },
+            onMenuClick = onOpenSettings,
             onOpenEditor = { ctx.startActivity(Intent(ctx, MedicationEditorActivity::class.java)) }
         )
 
         HorizontalDivider(color = AppColors.SoftPink, thickness = 1.dp)
         Spacer(Modifier.height(Spacing.sm))
 
-        // --- Alter ---
+        // Alter
         var years by rememberSaveable { mutableStateOf(0) }
         LabeledCompactSlider("Jahre", years, 0..100) { v -> years = v }
         Spacer(Modifier.height(Spacing.sm))
@@ -148,7 +137,7 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
 
         Spacer(Modifier.height(Spacing.lg))
 
-        // --- Gewicht ---
+        // Gewicht
         val estimated = remember(years, months) { estimateWeightKg(years, months) }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Gewicht (kg)", style = MaterialTheme.typography.bodySmall)
@@ -173,12 +162,11 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
 
         Spacer(Modifier.height(Spacing.sm))
 
-        // --- Medikament ---
+        // Medikament
         Text("Medikament", style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(Spacing.xs))
         val medications = remember(refreshTick) { MedicationRepository.getMedicationNames() }
         var selectedMedication by rememberSaveable { mutableStateOf(medications.first()) }
-        // Falls Auswahl nach Refresh nicht mehr existiert → auf erstes Element zurück
         LaunchedEffect(medications, refreshTick) {
             if (selectedMedication !in medications && medications.isNotEmpty()) {
                 selectedMedication = medications.first()
@@ -193,14 +181,13 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
 
         Spacer(Modifier.height(Spacing.sm))
 
-        // --- Einsatzfall (abhängig von Medikament) ---
+        // Einsatzfall
         Text("Einsatzfall", style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(Spacing.xs))
         val useCases = remember(selectedMedication, refreshTick) {
             MedicationRepository.getUseCaseNamesForMedication(selectedMedication)
         }
         var selectedUseCase by rememberSaveable(selectedMedication) { mutableStateOf(useCases.firstOrNull() ?: "") }
-        // Falls Auswahl nach Refresh nicht mehr existiert → korrigieren
         LaunchedEffect(useCases, selectedMedication, refreshTick) {
             if (selectedUseCase.isNotEmpty() && selectedUseCase !in useCases) {
                 selectedUseCase = useCases.firstOrNull() ?: ""
@@ -215,7 +202,7 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
 
         Spacer(Modifier.height(Spacing.sm))
 
-        // --- Ampullenkonzentration + Applikationsart nebeneinander ---
+        // Ampulle + Route
         var concFromSection by rememberSaveable { mutableStateOf<Double?>(null) }
         var manualConcFlag by rememberSaveable { mutableStateOf(false) }
         var ampMg by rememberSaveable { mutableStateOf<Double?>(null) }
@@ -227,7 +214,6 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
         var selectedRoute by rememberSaveable(selectedMedication, selectedUseCase) {
             mutableStateOf(routeOptions.firstOrNull() ?: "i.v.")
         }
-        // NEU: Wenn Routenliste sich ändert (z. B. Editor fügt „i.m.“ hinzu) → Auswahl validieren/anpassen
         LaunchedEffect(routeOptions, selectedMedication, selectedUseCase, refreshTick) {
             if (selectedRoute !in routeOptions) {
                 selectedRoute = routeOptions.firstOrNull() ?: selectedRoute
@@ -237,6 +223,7 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
             AmpouleConcentrationSection(
                 medication = selectedMedication,
+                refreshKey = refreshTick,
                 onStateChanged = { conc, manual, mgAmp, mlAmp ->
                     concFromSection = conc
                     manualConcFlag = manual
@@ -256,7 +243,7 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
 
         Spacer(Modifier.height(Spacing.lg))
 
-        // --- Ergebnis (Dosierung/Volumen + Hinweis) ---
+        // Ergebnis
         val dosing = remember(selectedMedication, selectedUseCase, selectedRoute, effectiveWeight, years) {
             runCatching {
                 computeDoseFor(
@@ -290,7 +277,6 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
         }
         val volumeMl = remember(dosing.mg, concForVolume) { computeVolumeMl(dosing.mg, concForVolume) }
 
-        // Werte formatieren (kommabündig + definierter Spalt)
         val doseText = dosing.mg?.let { "${format2(it)} mg" } ?: "—"
         val volNum = volumeMl?.let { format2(it) }
         val totalNum = dosing.totalPreparedMl?.let { format2(it) }
@@ -298,7 +284,6 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
         val volText = volPadded?.let { "$it ml" } ?: "—"
         val totalText = totalPadded?.let { "$it ml" } ?: "—"
 
-        // Lösung: NBSP zwischen Zahl–ml und 0,9–% (kein Umbruch vor %)
         val solutionText = when {
             dosing.totalPreparedMl != null && dosing.solutionText != null ->
                 "${formatNoTrailingZeros(dosing.totalPreparedMl!!)} ml " + dosing.solutionText.replace(" %", " %")
@@ -326,14 +311,13 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
                     listOf(dosing.hint, "Maximaldosis: ${dosing.maxDoseText}").joinToString("\n")
                 else dosing.hint
 
-
                 Text(hintCombined, style = MaterialTheme.typography.bodyLarge)
             }
         }
 
         Spacer(Modifier.height(Spacing.sm))
 
-        // --- Info-Buttons + Text (Repository) ---
+        // Info-Tabs + Text
         var activeTab by rememberSaveable { mutableStateOf(InfoTab.INDIKATION) }
         InfoTabsRow(activeTab = activeTab, onChange = { tab -> activeTab = tab })
         Spacer(Modifier.height(Spacing.xs))
@@ -348,8 +332,9 @@ private fun MainScreen(onOpenSettings: () -> Unit) {
             InfoTab.NEBENWIRKUNG -> sections?.sideEffects
         } ?: "—"
 
-        Surface(
-            tonalElevation = 2.dp,
+        // ④ Farbe angleichen: wie andere Boxen (TintE6E0E9)
+        Card(
+            colors = CardDefaults.cardColors(containerColor = TintE6E0E9),
             shape = MaterialTheme.shapes.medium,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -399,7 +384,6 @@ private fun CalcTable(
     val valueStyleTabular: TextStyle = MaterialTheme.typography.bodyLarge.copy(fontFeatureSettings = "tnum")
 
     Row(Modifier.fillMaxWidth()) {
-        // Linke Label-Spalte (fixe Breite)
         Column(Modifier.width(labelWidthLeft)) {
             left.forEachIndexed { i, (label, _) ->
                 Text(
@@ -409,7 +393,6 @@ private fun CalcTable(
                 )
             }
         }
-        // Linke Werte-Spalte (fixe Breite)
         Column(Modifier.width(valueWidthLeft)) {
             left.forEachIndexed { i, (label, value) ->
                 val isSolution = label == "Lösung"
@@ -423,8 +406,6 @@ private fun CalcTable(
                 )
             }
         }
-
-        // Rechte Label-Spalte inkl. mittlerem Abstand (kein Spacer, sondern Padding)
         Column(
             Modifier
                 .width(labelWidthRight + middleGap)
@@ -441,7 +422,6 @@ private fun CalcTable(
                 )
             }
         }
-        // Rechte Werte-Spalte (fixe Breite)
         Column(Modifier.width(valueWidthRight)) {
             right.forEachIndexed { i, (_, value) ->
                 Text(
@@ -513,10 +493,11 @@ private fun InfoTabsRow(activeTab: InfoTab, onChange: (InfoTab) -> Unit) {
 @Composable
 private fun AmpouleConcentrationSection(
     medication: String,
+    refreshKey: Int,
     onStateChanged: (concMgPerMl: Double?, manual: Boolean, mgAmpoule: Double?, mlAmpoule: Double?) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val med = remember(medication) { MedicationRepository.getMedicationByName(medication) }
+    val med = remember(medication, refreshKey) { MedicationRepository.getMedicationByName(medication) }
     val defaultText = med?.defaultConcentration?.display ?: "—"
     val defaultValue = med?.defaultConcentration?.mgPerMl
 
@@ -524,9 +505,9 @@ private fun AmpouleConcentrationSection(
     var mgText by rememberSaveable(medication) { mutableStateOf("") }
     var mlText by rememberSaveable(medication) { mutableStateOf("") }
 
-    // Initial & bei Umschalten Zustand melden
-    LaunchedEffect(medication, manual) {
-        if (!manual) onStateChanged(defaultValue, false, null, null) else onStateChanged(null, true, null, null)
+    LaunchedEffect(medication, manual, refreshKey) {
+        if (!manual) onStateChanged(defaultValue, false, null, null)
+        else onStateChanged(null, true, null, null)
     }
 
     Card(
@@ -545,11 +526,7 @@ private fun AmpouleConcentrationSection(
             Spacer(Modifier.height(Spacing.xs))
 
             if (!manual) {
-                Text(
-                    defaultText,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                Text(defaultText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
             } else {
                 Row(verticalAlignment = Alignment.Top) {
                     Column(Modifier.width(96.dp)) {
@@ -579,7 +556,6 @@ private fun AmpouleConcentrationSection(
     }
 }
 
-// ---- Eingabe-/UI-Hilfen ----
 @Composable
 private fun CompactNumberField(
     value: String,
@@ -654,10 +630,7 @@ private fun CompactDropdownField(
             options.forEach { option ->
                 DropdownMenuItem(
                     text = { Text(option, style = MaterialTheme.typography.bodyLarge) },
-                    onClick = {
-                        onSelect(option)
-                        expanded = false
-                    }
+                    onClick = { onSelect(option); expanded = false }
                 )
             }
         }
@@ -680,7 +653,6 @@ private fun parseWeightKg(text: String): Double? = text.replace(',', '.').toDoub
 private fun formatKg(v: Double): String = String.format(Locale.GERMANY, "%.1f", v)
 private fun format2(v: Double): String = String.format(Locale.GERMANY, "%.2f", v)
 
-/** Gewichtsschätzung (APLS-basiert + monatsgenau) */
 private fun estimateWeightKg(years: Int, months: Int): Double {
     val totalMonths = years * 12 + months
     if (totalMonths <= 12) return 4.0 + 0.5 * totalMonths
@@ -703,7 +675,6 @@ private fun estimateWeightKg(years: Int, months: Int): Double {
     }
 }
 
-// ---- Dezimal-Ausrichtung ----
 private fun alignDecimalForTwo(a: String?, b: String?): Pair<String?, String?> {
     if (a == null && b == null) return null to null
     val aInt = a?.substringBefore(',')?.filter { it.isDigit() } ?: ""
@@ -715,7 +686,7 @@ private fun alignDecimalForTwo(a: String?, b: String?): Pair<String?, String?> {
         val rest = x.substringAfter(',', missingDelimiterValue = "")
         val digitsOnly = intPart.filter { it.isDigit() }
         val padCount = maxLen - digitsOnly.length
-        val pad = buildString { repeat(padCount) { append(' ') } } // U+2007 Figure Space
+        val pad = buildString { repeat(padCount) { append(' ') } }
         return if (rest.isEmpty()) pad + intPart else pad + intPart + "," + rest
     }
     return pad(a) to pad(b)
@@ -729,8 +700,8 @@ private fun formatNoTrailingZeros(v: Double): String {
 @Composable
 private fun HeaderRow(
     onMedicationsClick: () -> Unit,
-    onMenuClick: () -> Unit,      // Settings
-    onOpenEditor: () -> Unit      // Editor
+    onMenuClick: () -> Unit,
+    onOpenEditor: () -> Unit
 ) {
     Row(
         Modifier
@@ -823,6 +794,7 @@ private fun CompactSlider(
             val centerY = size.height / 2f
             val top = centerY - trackHeightPx / 2f
 
+            // Track
             drawRoundRect(
                 color = inactive,
                 topLeft = Offset(0f, top),
@@ -830,6 +802,7 @@ private fun CompactSlider(
                 cornerRadius = trackCorner
             )
 
+            // Active bis Thumb
             val thumbCenterX = xFromValue(value)
             val thumbSize = trackHeightPx
             val half = thumbSize / 2f
@@ -841,14 +814,13 @@ private fun CompactSlider(
                 cornerRadius = trackCorner
             )
 
+            // ③ Thumb = gleich runde Kapsel wie Track, kein weißer Strich mehr
             drawRoundRect(
                 color = thumbColor,
                 topLeft = Offset(clampedCx - half, top),
                 size = Size(thumbSize, thumbSize),
-                cornerRadius = CornerRadius(trackHeightPx * 0.25f, trackHeightPx * 0.25f)
+                cornerRadius = trackCorner
             )
-            val stripeX = clampedCx
-            drawLine(color = Color.White, start = Offset(stripeX, top + 2f), end = Offset(stripeX, top + thumbSize - 2f), strokeWidth = 2f)
         }
     }
 }
@@ -878,23 +850,182 @@ private fun SettingsScreen(
     onBack: () -> Unit,
     onToggleDark: (Boolean) -> Unit
 ) {
-    Column(Modifier.fillMaxSize().padding(Spacing.lg)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Einstellungen", style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.weight(1f))
-            TextButton(onClick = onBack) { Text("Zurück") }
-        }
-        Spacer(Modifier.height(Spacing.lg))
+    val ctx = LocalContext.current
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Dark-Mode", style = MaterialTheme.typography.bodyLarge)
-            Spacer(Modifier.weight(1f))
-            Switch(checked = isDark, onCheckedChange = onToggleDark)
+    var backups by remember { mutableStateOf(JsonStore.listBackups(ctx)) }
+    var showRestoreDialog by remember { mutableStateOf(false) }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            val res = JsonStore.exportToUri(ctx, uri)
+            scope.launch { snackbar.showSnackbar(if (res.isSuccess) "Export erfolgreich." else "Export fehlgeschlagen.") }
         }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            val res = JsonStore.importFromUri(ctx, uri)
+            if (res.isSuccess) {
+                val json = JsonStore.readWithAssetsFallback(ctx, ctx.assets)
+                MedicationRepository.loadFromJsonString(json)
+                MedicationRepository.setLazyJsonLoader { JsonStore.readWithAssetsFallback(ctx, ctx.assets) }
+                backups = JsonStore.listBackups(ctx)
+                scope.launch { snackbar.showSnackbar("Import erfolgreich.") }
+            } else {
+                scope.launch { snackbar.showSnackbar("Import fehlgeschlagen.") }
+            }
+        }
+    }
+
+    Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
+        Column(
+            Modifier
+                .padding(padding)
+                .statusBarsPadding() // ② Safe-Area
+                .fillMaxSize()
+                .padding(Spacing.lg)
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Einstellungen", style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = onBack) { Text("Zurück") }
+            }
+            Spacer(Modifier.height(Spacing.md))
+
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Dark-Mode", style = MaterialTheme.typography.bodyLarge)
+                Spacer(Modifier.weight(1f))
+                Switch(checked = isDark, onCheckedChange = onToggleDark)
+            }
+
+            Spacer(Modifier.height(Spacing.lg))
+            Divider()
+            Spacer(Modifier.height(Spacing.lg))
+
+            Text("Daten • Backup / Import / Export", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(Spacing.sm))
+
+            // ① Buttons gleich groß
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        val res = JsonStore.createManualBackup(ctx)
+                        backups = JsonStore.listBackups(ctx)
+                        scope.launch { snackbar.showSnackbar(if (res.isSuccess) "Backup erstellt." else "Backup fehlgeschlagen.") }
+                    },
+                    modifier = Modifier.weight(1f).height(44.dp)
+                ) { Text("Backup erstellen") }
+
+                OutlinedButton(
+                    onClick = { showRestoreDialog = true },
+                    enabled = backups.isNotEmpty(),
+                    modifier = Modifier.weight(1f).height(44.dp)
+                ) { Text("Backup einspielen") }
+            }
+
+            Spacer(Modifier.height(Spacing.sm))
+
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = { exportLauncher.launch("medications_export.json") },
+                    modifier = Modifier.weight(1f).height(44.dp)
+                ) { Text("Exportieren…") }
+                OutlinedButton(
+                    onClick = { importLauncher.launch(arrayOf("application/json", "text/json", "text/plain", "*/*")) },
+                    modifier = Modifier.weight(1f).height(44.dp)
+                ) { Text("Importieren…") }
+            }
+
+            Spacer(Modifier.height(Spacing.lg))
+
+            Text("Vorhandene Backups (neu → alt):", style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(Spacing.sm))
+            if (backups.isEmpty()) {
+                Text("— keine —", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    backups.forEach { f ->
+                        Text("• ${formatBackupDate(f)}", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+    }
+
+    if (showRestoreDialog) {
+        RestoreBackupDialog(
+            backups = backups,
+            onDismiss = { showRestoreDialog = false },
+            onRestore = { file ->
+                val res = JsonStore.restoreBackup(ctx, file)
+                if (res.isSuccess) {
+                    val json = JsonStore.readWithAssetsFallback(ctx, ctx.assets)
+                    MedicationRepository.loadFromJsonString(json)
+                    MedicationRepository.setLazyJsonLoader { JsonStore.readWithAssetsFallback(ctx, ctx.assets) }
+                    backups = JsonStore.listBackups(ctx)
+                    showRestoreDialog = false
+                    scope.launch { snackbar.showSnackbar("Backup eingespielt.") }
+                } else {
+                    scope.launch { snackbar.showSnackbar("Wiederherstellung fehlgeschlagen.") }
+                }
+            }
+        )
     }
 }
 
-// --- Lifecycle: Recompose bei ON_RESUME ------------------------------------
+@Composable
+private fun RestoreBackupDialog(
+    backups: List<java.io.File>,
+    onDismiss: () -> Unit,
+    onRestore: (java.io.File) -> Unit
+) {
+    var selected by remember(backups) { mutableStateOf(backups.firstOrNull()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Backup einspielen") },
+        text = {
+            if (backups.isEmpty()) {
+                Text("Es sind keine Backups vorhanden.")
+            } else {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 360.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    backups.forEach { f ->
+                        val isSel = f == selected
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = isSel, onClick = { selected = f })
+                            Spacer(Modifier.width(8.dp))
+                            Text(formatBackupDate(f))
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(enabled = selected != null, onClick = { selected?.let(onRestore) }) { Text("Einspielen") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
+    )
+}
+
+private fun formatBackupDate(f: java.io.File): String {
+    val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.GERMANY)
+    return sdf.format(f.lastModified())
+}
+
 @Composable
 private fun rememberOnResumeTick(): Int {
     val owner = LocalLifecycleOwner.current
