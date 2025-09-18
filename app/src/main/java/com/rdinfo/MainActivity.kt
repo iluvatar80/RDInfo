@@ -987,7 +987,10 @@ private fun SettingsScreen(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Einstellungen", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.weight(1f))
-                TextButton(onClick = onBack) { Text("Zurück") }
+                TextButton(onClick = onBack) {
+                    // kurze Labels, daher kein Wrap nötig – trotzdem sicherheitshalber:
+                    Text("Zurück", maxLines = 1, softWrap = false)
+                }
             }
             Spacer(Modifier.height(Spacing.md))
 
@@ -1004,34 +1007,60 @@ private fun SettingsScreen(
             Text("Daten • Backup / Import / Export", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(Spacing.sm))
 
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // 🔒 Anti-Umbruch: Buttontexte werden EINZEILIG erzwungen + Ellipsis + zentriert
+            @Composable
+            fun SingleLineButtonText(label: String) = Text(
+                text = label,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Button(
                     onClick = {
                         val res = JsonStore.createManualBackup(ctx)
                         backups = JsonStore.listBackups(ctx)
                         scope.launch { snackbar.showSnackbar(if (res.isSuccess) "Backup erstellt." else "Backup fehlgeschlagen.") }
                     },
-                    modifier = Modifier.weight(1f).height(44.dp)
-                ) { Text("Backup erstellen") }
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                ) { SingleLineButtonText("Backup erstellen") }
 
                 OutlinedButton(
                     onClick = { showRestoreDialog = true },
                     enabled = backups.isNotEmpty(),
-                    modifier = Modifier.weight(1f).height(44.dp)
-                ) { Text("Backup einspielen") }
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                ) { SingleLineButtonText("Backup einspielen") }
             }
 
             Spacer(Modifier.height(Spacing.sm))
 
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 OutlinedButton(
                     onClick = { exportLauncher.launch("medications_export.json") },
-                    modifier = Modifier.weight(1f).height(44.dp)
-                ) { Text("Exportieren…") }
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                ) { SingleLineButtonText("Exportieren…") }
+
                 OutlinedButton(
                     onClick = { importLauncher.launch(arrayOf("application/json", "text/json", "text/plain", "*/*")) },
-                    modifier = Modifier.weight(1f).height(44.dp)
-                ) { Text("Importieren…") }
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                ) { SingleLineButtonText("Importieren…") }
             }
 
             Spacer(Modifier.height(Spacing.lg))
