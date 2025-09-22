@@ -21,9 +21,6 @@ import androidx.compose.ui.unit.dp
 import com.rdinfo.ui.theme.RDInfoTheme
 import com.rdinfo.data.JsonStore
 import com.rdinfo.data.MedicationRepository
-import com.rdinfo.data.UseCaseKey
-import com.rdinfo.data.useCaseKeyFromLabel
-import com.rdinfo.data.useCaseLabel
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -32,17 +29,20 @@ import com.rdinfo.prefs.ThemePrefs
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 
-
 // ------------ Datenmodelle (Editor) -----------------------------------------
 private data class EditorMed(
     var name: String,
     var defaultMg: Double?,
     var defaultMl: Double?,
-    val useCaseToRoutes: MutableMap<String, MutableList<String>> = mutableMapOf()
+    val useCaseToRoutes: MutableMap<String, MutableList<String>> = mutableMapOf(),
+    var indication: String = "",
+    var contraindication: String = "",
+    var effect: String = "",
+    var sideEffects: String = ""
 )
 
 private data class EditorRule(
-    var useCase: UseCaseKey,
+    var useCase: String,
     var route: String?,
     var ageMinYears: Int? = null,
     var ageMaxYears: Int? = null,
@@ -60,7 +60,6 @@ private data class EditorRule(
 
 private sealed class EditorDialog {
     data class Name(val title: String, val initial: String, val onOk: (String) -> Unit) : EditorDialog()
-    data class UseCase(val existing: List<String>, val onOk: (String) -> Unit) : EditorDialog()
     data class Confirm(val title: String, val message: String, val onYes: () -> Unit, val onNo: () -> Unit) : EditorDialog()
     data class Errors(val errors: List<String>) : EditorDialog()
 }
@@ -74,7 +73,6 @@ class MedicationEditorActivity : ComponentActivity() {
 
             RDInfoTheme(darkTheme = dark.value) {
                 Surface(color = MaterialTheme.colorScheme.background) {
-                    // Safe-Area, damit nichts in Notch/Navigation rutscht:
                     Box(Modifier.statusBarsPadding().navigationBarsPadding()) {
                         EditorScreen(onClose = { finish() })
                     }
@@ -91,11 +89,9 @@ private fun EditorScreen(onClose: () -> Unit) {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    // ------ Dirty-State (Unsaved-Changes-Guard)
     var dirty by remember { mutableStateOf(false) }
     fun markDirty() { dirty = true }
 
-    // Back-Button abfangen
     var dialog by remember { mutableStateOf<EditorDialog?>(null) }
     BackHandler(enabled = dirty) {
         dialog = EditorDialog.Confirm(
@@ -106,7 +102,6 @@ private fun EditorScreen(onClose: () -> Unit) {
         )
     }
 
-    // Seed: Repository → EditorMed
     val editorMeds = remember {
         val meds = MedicationRepository.getMedicationNames()
         mutableStateListOf<EditorMed>().apply {
@@ -123,7 +118,11 @@ private fun EditorScreen(onClose: () -> Unit) {
                         name = mName,
                         defaultMg = med?.defaultConcentration?.mg,
                         defaultMl = med?.defaultConcentration?.ml,
-                        useCaseToRoutes = map
+                        useCaseToRoutes = map,
+                        indication = med?.sections?.indication ?: "",
+                        contraindication = med?.sections?.contraindication ?: "",
+                        effect = med?.sections?.effect ?: "",
+                        sideEffects = med?.sections?.sideEffects ?: ""
                     )
                 )
             }
@@ -139,16 +138,14 @@ private fun EditorScreen(onClose: () -> Unit) {
     fun currentUseCases(): List<String> = currentMed()?.useCaseToRoutes?.keys?.sorted() ?: emptyList()
     fun currentRoutes(): List<String> = currentMed()?.useCaseToRoutes?.get(selectedUseCase)?.sorted() ?: emptyList()
 
-    // Regel-State
     val rulesState = remember { mutableStateMapOf<String, SnapshotStateList<EditorRule>>() }
     fun rulesKey(m: String, uc: String, r: String) = "$m|$uc|$r"
     fun rulesList(m: String, uc: String, r: String): SnapshotStateList<EditorRule> {
         val key = rulesKey(m, uc, r)
         return rulesState.getOrPut(key) {
             val medObj = MedicationRepository.getMedicationByName(m)
-            val ucKey = useCaseKeyFromLabel(uc)
             val seeded = medObj?.dosing
-                ?.filter { it.useCase == ucKey && it.route?.equals(r, true) == true }
+                ?.filter { it.useCase == uc && it.route?.equals(r, true) == true }
                 ?.map {
                     EditorRule(
                         useCase = it.useCase,
@@ -206,7 +203,6 @@ private fun EditorScreen(onClose: () -> Unit) {
                 }) { Text("Abbrechen") }
                 Spacer(Modifier.width(8.dp))
                 Button(onClick = {
-                    // ---- VALIDIERUNG ----
                     val errors = validateAll(editorMeds, rulesState)
                     if (errors.isNotEmpty()) {
                         dialog = EditorDialog.Errors(errors)
@@ -237,14 +233,11 @@ private fun EditorScreen(onClose: () -> Unit) {
                 meds = editorMeds.map { it.name }.sorted(),
                 selectedMed = selectedMed,
                 onMedChange = { selectedMed = it; selectedUseCase = allLabel; selectedRoute = allLabel },
-
-                // 1) „Neu“ (Medikament): jetzt mit Namensdialog (kein Auto-„Neues Medikament“)
                 onMedNew = {
                     dialog = EditorDialog.Name("Neues Medikament", "") { newName ->
                         val name = newName.trim()
                         if (name.isEmpty()) return@Name
                         if (editorMeds.any { it.name.equals(name, true) }) {
-                            // Duplikat: still schweigen/ignorieren
                             selectedMed = name
                             return@Name
                         }
@@ -269,23 +262,14 @@ private fun EditorScreen(onClose: () -> Unit) {
                     selectedUseCase = allLabel; selectedRoute = allLabel
                     markDirty()
                 },
-
                 useCases = listOf(allLabel) + currentUseCases(),
                 selectedUseCase = selectedUseCase,
                 onUseCaseChange = { selectedUseCase = it ?: allLabel; selectedRoute = allLabel },
-
-                // 2) „Neu“ (Einsatzfall): Freitext-Name; wird nur übernommen, wenn er einem bekannten UseCaseKey entspricht.
                 onUseCaseNew = {
                     val med = currentMed() ?: return@ContextBar
                     dialog = EditorDialog.Name("Neuer Einsatzfall", "") { label ->
                         val candidate = label.trim()
                         if (candidate.isEmpty()) return@Name
-                        // wenn unbekannt → ignorieren (und leise abbrechen)
-                        val ucKey = useCaseKeyFromLabel(candidate) ?: run {
-                            scope.launch { snackbar.showSnackbar("Einsatzfall nicht erkannt – bitte Standardbezeichnung verwenden.") }
-                            return@Name
-                        }
-                        // duplikate ignorieren
                         if (med.useCaseToRoutes.keys.any { it.equals(candidate, true) }) return@Name
                         med.useCaseToRoutes[candidate] = mutableListOf()
                         selectedUseCase = candidate
@@ -298,8 +282,7 @@ private fun EditorScreen(onClose: () -> Unit) {
                     val uc = selectedUseCase.takeIf { it != allLabel } ?: return@ContextBar
                     dialog = EditorDialog.Name("Einsatzfall umbenennen", uc) { newLabel ->
                         val nl = newLabel.trim()
-                        // nur zulassen, wenn bekannte Standardbezeichnung
-                        if (nl.isBlank() || useCaseKeyFromLabel(nl) == null) return@Name
+                        if (nl.isBlank()) return@Name
                         val routes = med.useCaseToRoutes.remove(uc) ?: mutableListOf()
                         if (med.useCaseToRoutes.keys.none { it.equals(nl, true) }) {
                             med.useCaseToRoutes[nl] = routes; selectedUseCase = nl; markDirty()
@@ -312,7 +295,6 @@ private fun EditorScreen(onClose: () -> Unit) {
                     med.useCaseToRoutes.remove(uc); selectedUseCase = allLabel; selectedRoute = allLabel
                     markDirty()
                 },
-
                 routes = listOf(allLabel) + (if (selectedUseCase == allLabel) emptyList() else currentRoutes()),
                 selectedRoute = selectedRoute,
                 onRouteChange = { selectedRoute = it ?: allLabel },
@@ -323,7 +305,6 @@ private fun EditorScreen(onClose: () -> Unit) {
                         val nm = name.trim()
                         if (nm.isEmpty()) return@Name
                         val list = med.useCaseToRoutes[uc] ?: mutableListOf<String>().also { med.useCaseToRoutes[uc] = it }
-                        // 3) Duplikate still ignorieren
                         if (list.any { it.equals(nm, true) }) return@Name
                         list.add(nm); selectedRoute = nm; markDirty()
                     }
@@ -336,7 +317,7 @@ private fun EditorScreen(onClose: () -> Unit) {
                         val nn = newName.trim()
                         if (nn.isEmpty()) return@Name
                         val list = med.useCaseToRoutes[uc] ?: return@Name
-                        if (list.any { it.equals(nn, true) }) return@Name // Duplikat → ignorieren
+                        if (list.any { it.equals(nn, true) }) return@Name
                         val idx = list.indexOfFirst { it == r }; if (idx >= 0) list[idx] = nn; selectedRoute = nn; markDirty()
                     }
                 },
@@ -347,21 +328,20 @@ private fun EditorScreen(onClose: () -> Unit) {
                     med.useCaseToRoutes[uc]?.removeAll { it == r }; selectedRoute = allLabel
                     markDirty()
                 },
-
                 onShowMessage = { msg -> scope.launch { snackbar.showSnackbar(msg) } }
             )
 
             Spacer(Modifier.height(12.dp))
 
-            // --- Ampullenkonzentration (editierbar) --------------------------
             SectionCard(title = "Ampullenkonzentration") {
                 val med = currentMed()
                 var mgText by remember(med?.name) { mutableStateOf(med?.defaultMg?.toString() ?: "") }
                 var mlText by remember(med?.name) { mutableStateOf(med?.defaultMl?.toString() ?: "") }
+                var selectedUnit by remember(med?.name) { mutableStateOf("mg") }
 
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     LabeledNumberField(
-                        label = "Ampulle mg",
+                        label = "Ampulle (Wert)",  // HIER der Fehler - selectedUnit ist außerhalb des Gültigkeitsbereichs
                         value = mgText,
                         onValueChange = {
                             mgText = it; med?.defaultMg = it.replace(',', '.').toDoubleOrNull(); markDirty()
@@ -381,28 +361,27 @@ private fun EditorScreen(onClose: () -> Unit) {
                     val mg = med?.defaultMg; val ml = med?.defaultMl
                     if (mg != null && ml != null && ml > 0.0) mg / ml else null
                 }
-                if (ratio != null) Text("= ${"%.3f".format(ratio)} mg/ml", style = MaterialTheme.typography.labelSmall)
+                if (ratio != null) {
+                    Text("= ${formatNoTrailingZeros(ratio)} ${selectedUnit}/ml", style = MaterialTheme.typography.labelSmall)
+                } else {
+                    val mg = med?.defaultMg; val ml = med?.defaultMl
+                    if (mg != null && ml == 0.0) {
+                        Text("Trockensubstanz", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
             }
 
-            // --- Regeln -----------------------------------------------------
             RulesSection(
                 selectedMed = selectedMed,
                 selectedUseCase = selectedUseCase,
                 selectedRoute = selectedRoute,
                 getRulesList = { m, uc, r -> rulesList(m, uc, r) },
-                allUseCases = { currentUseCases() },
-                routesProvider = { uc -> currentMed()?.useCaseToRoutes?.get(uc)?.sorted() ?: emptyList() },
-                onMoveRule = { fromUc, fromRoute, toUc, toRoute, index ->
-                    val medName = selectedMed ?: return@RulesSection
-                    val src = rulesList(medName, fromUc, fromRoute)
-                    if (index !in src.indices) return@RulesSection
-                    val item = src.removeAt(index)
-                    val target = rulesList(medName, toUc, toRoute)
-                    useCaseKeyFromLabel(toUc)?.let { item.useCase = it }
-                    item.route = toRoute
-                    target.add(item)
-                    markDirty()
-                },
+                onAnyChange = { markDirty() }
+            )
+
+            InfoTextsSection(
+                selectedMed = selectedMed,
+                currentMed = { currentMed() },
                 onAnyChange = { markDirty() }
             )
 
@@ -410,16 +389,10 @@ private fun EditorScreen(onClose: () -> Unit) {
         }
     }
 
-    // --- Dialoge rendern ----------------------------------------------------
     when (val d = dialog) {
         is EditorDialog.Name -> NameInputDialog(
             title = d.title,
             initial = d.initial,
-            onConfirm = { dialog = null; d.onOk(it) },
-            onDismiss = { dialog = null }
-        )
-        is EditorDialog.UseCase -> UseCasePickerDialog(
-            existing = d.existing,
             onConfirm = { dialog = null; d.onOk(it) },
             onDismiss = { dialog = null }
         )
@@ -434,7 +407,6 @@ private fun EditorScreen(onClose: () -> Unit) {
     }
 }
 
-// ------------ Kontext-Leiste (Dropdowns + Buttons) -------------------------
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ContextBar(
@@ -444,21 +416,18 @@ private fun ContextBar(
     onMedNew: () -> Unit,
     onMedRename: () -> Unit,
     onMedDelete: () -> Unit,
-
     useCases: List<String>,
     selectedUseCase: String,
     onUseCaseChange: (String?) -> Unit,
     onUseCaseNew: () -> Unit,
     onUseCaseRename: () -> Unit,
     onUseCaseDelete: () -> Unit,
-
     routes: List<String>,
     selectedRoute: String,
     onRouteChange: (String?) -> Unit,
     onRouteNew: () -> Unit,
     onRouteRename: () -> Unit,
     onRouteDelete: () -> Unit,
-
     onShowMessage: (String) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -473,7 +442,6 @@ private fun ContextBar(
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = onMedNew) { Text("Neu") }
-            OutlinedButton(onClick = onMedRename, enabled = selectedMed != null) { Text("Umben.") }
             OutlinedButton(onClick = onMedDelete, enabled = selectedMed != null) { Text("Löschen") }
         }
 
@@ -541,16 +509,12 @@ private fun ExposedDropdown(
     }
 }
 
-// ------------ Regeln --------------------------------------------------------
 @Composable
 private fun RulesSection(
     selectedMed: String?,
     selectedUseCase: String,
     selectedRoute: String,
     getRulesList: (String, String, String) -> SnapshotStateList<EditorRule>,
-    allUseCases: () -> List<String>,
-    routesProvider: (String) -> List<String>,
-    onMoveRule: (fromUc: String, fromRoute: String, toUc: String, toRoute: String, index: Int) -> Unit,
     onAnyChange: () -> Unit
 ) {
     val med = selectedMed; val uc = selectedUseCase; val r = selectedRoute
@@ -560,8 +524,7 @@ private fun RulesSection(
         } else {
             val rules = remember(med, uc, r) { getRulesList(med, uc, r) }
             OutlinedButton(onClick = {
-                val ucKey = useCaseKeyFromLabel(uc) ?: return@OutlinedButton
-                rules.add(EditorRule(useCase = ucKey, route = r)); onAnyChange()
+                rules.add(EditorRule(useCase = uc, route = r)); onAnyChange()
             }) { Text("Neu") }
             Spacer(Modifier.height(8.dp))
             if (rules.isEmpty()) Text("Keine Regeln vorhanden.")
@@ -663,7 +626,6 @@ private fun RuleCard(
     }
 }
 
-// ------------ UI-Hilfen ----------------------------------------------------
 @Composable
 private fun SectionCard(title: String, content: @Composable ColumnScope.() -> Unit) {
     ElevatedCard(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
@@ -684,7 +646,13 @@ private fun TopFieldLabel(text: String) {
 private fun LabeledTextField(label: String, value: String, onValueChange: (String) -> Unit, modifier: Modifier = Modifier) {
     Column(modifier) {
         TopFieldLabel(label)
-        OutlinedTextField(value = value, onValueChange = onValueChange, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.fillMaxWidth(),
+            maxLines = 3,  // Mehrzeilige Eingabe erlauben
+            singleLine = false
+        )
     }
 }
 
@@ -701,7 +669,6 @@ private fun LabeledNumberField(label: String, value: String, onValueChange: (Str
     }
 }
 
-// ------------ Dialoge -------------------------------------------------------
 @Composable
 private fun NameInputDialog(title: String, initial: String = "", onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
     var text by remember { mutableStateOf(initial) }
@@ -710,31 +677,6 @@ private fun NameInputDialog(title: String, initial: String = "", onConfirm: (Str
         title = { Text(title) },
         text = { LabeledTextField(label = "Name", value = text, onValueChange = { text = it }) },
         confirmButton = { Button(onClick = { onConfirm(text) }) { Text("OK") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
-    )
-}
-
-@Composable
-private fun UseCasePickerDialog(existing: List<String>, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    val all = remember { UseCaseKey.values().map { useCaseLabel(it) } }
-    val options = remember(existing) { all.filterNot { ex -> existing.any { it.equals(ex, true) } } }
-    var selected by remember { mutableStateOf(options.firstOrNull()) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Neuer Einsatzfall") },
-        text = {
-            if (options.isEmpty()) Text("Alle Einsatzfälle sind bereits vorhanden.")
-            else Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                options.forEach { opt ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        RadioButton(selected = (opt == selected), onClick = { selected = opt })
-                        Text(opt)
-                    }
-                }
-            }
-        },
-        confirmButton = { Button(onClick = { selected?.let(onConfirm) }, enabled = !selected.isNullOrBlank()) { Text("OK") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
     )
 }
@@ -764,7 +706,45 @@ private fun ErrorsDialog(errors: List<String>, onClose: () -> Unit) {
     )
 }
 
-// ------------ Validierung ---------------------------------------------------
+@Composable
+private fun InfoTextsSection(
+    selectedMed: String?,
+    currentMed: () -> EditorMed?,
+    onAnyChange: () -> Unit
+) {
+    SectionCard(title = "Medikamenten-Informationen") {
+        if (selectedMed == null) {
+            Text("Bitte Medikament wählen.")
+        } else {
+            val med = currentMed()
+            if (med != null) {
+                var indication by remember(selectedMed) { mutableStateOf(med.indication) }
+                var contraindication by remember(selectedMed) { mutableStateOf(med.contraindication) }
+                var effect by remember(selectedMed) { mutableStateOf(med.effect) }
+                var sideEffects by remember(selectedMed) { mutableStateOf(med.sideEffects) }
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LabeledTextField("Indikation", indication, {
+                        indication = it; med.indication = it; onAnyChange()
+                    }, Modifier.fillMaxWidth())
+
+                    LabeledTextField("Kontraindikation", contraindication, {
+                        contraindication = it; med.contraindication = it; onAnyChange()
+                    }, Modifier.fillMaxWidth())
+
+                    LabeledTextField("Wirkung", effect, {
+                        effect = it; med.effect = it; onAnyChange()
+                    }, Modifier.fillMaxWidth())
+
+                    LabeledTextField("Nebenwirkung", sideEffects, {
+                        sideEffects = it; med.sideEffects = it; onAnyChange()
+                    }, Modifier.fillMaxWidth())
+                }
+            }
+        }
+    }
+}
+
 private fun validateAll(
     meds: List<EditorMed>,
     rulesState: Map<String, SnapshotStateList<EditorRule>>
@@ -772,21 +752,18 @@ private fun validateAll(
     val errors = mutableListOf<String>()
     val norm: (String) -> String = { it.trim().lowercase() }
 
-    // 1) Medikamente: Name nötig + eindeutig
     val medNames = meds.map { it.name }
     if (medNames.any { it.isBlank() }) errors += "Leere Medikament-Namen sind nicht erlaubt."
     val dupMed = medNames.groupBy { norm(it) }.filter { it.value.size > 1 }.keys
     if (dupMed.isNotEmpty()) errors += "Doppelte Medikament-Namen: ${dupMed.joinToString()}."
 
     meds.forEach { m ->
-        // 2) UseCases je Medikament: eindeutig, kein „Alle“
         val ucs = m.useCaseToRoutes.keys.toList()
         if (ucs.any { it.isBlank() }) errors += "[${m.name}] Einsatzfall-Name darf nicht leer sein."
         if (ucs.any { it.equals("Alle", true) }) errors += "[${m.name}] Einsatzfall-Name „Alle“ ist reserviert."
         val dupUc = ucs.groupBy { norm(it) }.filter { it.value.size > 1 }.keys
         if (dupUc.isNotEmpty()) errors += "[${m.name}] Doppelte Einsatzfälle: ${dupUc.joinToString()}."
 
-        // 3) Routen je UseCase: eindeutig, kein „Alle“
         m.useCaseToRoutes.forEach { (uc, routes) ->
             if (routes.any { it.isBlank() }) errors += "[${m.name} / $uc] Routenname darf nicht leer sein."
             if (routes.any { it.equals("Alle", true) }) errors += "[${m.name} / $uc] Routenname „Alle“ ist reserviert."
@@ -795,37 +772,30 @@ private fun validateAll(
         }
     }
 
-    // Regeln validieren anhand rulesState
     rulesState.forEach { (key, list) ->
         val parts = key.split("|")
         if (parts.size != 3) return@forEach
         val (medName, ucLabel, route) = parts
 
-        // 4a) Einzelregel-Checks
         list.forEachIndexed { i, r ->
             val idx = i + 1
             val where = "[$medName / $ucLabel / $route] Regel $idx"
 
-            // XOR Dosis
             val hasPerKg = r.doseMgPerKg != null
             val hasFixed = r.fixedDoseMg != null
             if (hasPerKg == hasFixed) errors += "$where: Entweder doseMgPerKg ODER fixedDoseMg angeben."
 
-            // Min/Max Alter
             if (r.ageMinYears != null && r.ageMaxYears != null && r.ageMinYears!! > r.ageMaxYears!!) {
                 errors += "$where: Alter min > Alter max."
             }
-            // Min/Max Gewicht
             if (r.weightMinKg != null && r.weightMaxKg != null && r.weightMinKg!! > r.weightMaxKg!!) {
                 errors += "$where: Gewicht min > Gewicht max."
             }
-            // empfohlene Konzentration > 0
             if (r.recommendedConcMgPerMl != null && r.recommendedConcMgPerMl!! <= 0.0) {
                 errors += "$where: empfohlene Konzentration muss > 0 sein."
             }
         }
 
-        // 4b) Intervall-Überlappungen
         fun aMin(r: EditorRule) = r.ageMinYears ?: Int.MIN_VALUE
         fun aMax(r: EditorRule) = r.ageMaxYears ?: Int.MAX_VALUE
         fun wMin(r: EditorRule) = r.weightMinKg ?: Double.NEGATIVE_INFINITY
@@ -846,7 +816,6 @@ private fun validateAll(
     return errors
 }
 
-// ------------ Persistenz: JSON bauen ---------------------------------------
 private fun slugifyId(name: String): String = name.lowercase()
     .replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
     .replace(Regex("[^a-z0-9]+"), "-").trim('-')
@@ -861,8 +830,7 @@ private fun buildJsonFromEditor(
         rulesState.forEach { (key, list) ->
             val parts = key.split("|"); if (parts.size != 3) return@forEach
             val (m, ucLabel, route) = parts; if (m != name) return@forEach
-            val uc = useCaseKeyFromLabel(ucLabel) ?: return@forEach
-            base.removeAll { it.useCase == uc && (it.route ?: "") == route }
+            base.removeAll { it.useCase == ucLabel && (it.route ?: "") == route }
             list.forEach { er ->
                 base.add(
                     com.rdinfo.data.DosingRule(
@@ -896,29 +864,28 @@ private fun buildJsonFromEditor(
         val ml = m.defaultMl ?: repoMed?.defaultConcentration?.ml
         if (mg != null && ml != null) {
             val display = "${trim0(mg)} mg / ${trim0(ml)} ml"
+            val mgPerMl = if (ml > 0.0) mg / ml else 0.0  // Division durch Null vermeiden
             medObj.put("defaultConcentration", JSONObject().apply {
-                put("mg", mg); put("ml", ml); put("mgPerMl", mg / ml); put("display", display)
+                put("mg", mg); put("ml", ml); put("mgPerMl", mgPerMl); put("display", display)
             })
         }
 
-        repoMed?.sections?.let { s ->
-            medObj.put("sections", JSONObject().apply {
-                s.indication?.let { put("indication", it) }
-                s.contraindication?.let { put("contraindication", it) }
-                s.effect?.let { put("effect", it) }
-                s.sideEffects?.let { put("sideEffects", it) }
-            })
-        }
+        val sectionsObj = JSONObject()
+        if (m.indication.isNotBlank()) sectionsObj.put("indication", m.indication)
+        if (m.contraindication.isNotBlank()) sectionsObj.put("contraindication", m.contraindication)
+        if (m.effect.isNotBlank()) sectionsObj.put("effect", m.effect)
+        if (m.sideEffects.isNotBlank()) sectionsObj.put("sideEffects", m.sideEffects)
+        if (sectionsObj.length() > 0) medObj.put("sections", sectionsObj)
 
-        val useCaseKeys = linkedSetOf<UseCaseKey>()
-        m.useCaseToRoutes.keys.forEach { lbl -> useCaseKeyFromLabel(lbl)?.let(useCaseKeys::add) }
-        rulesForMedName(m.name).forEach { useCaseKeys.add(it.useCase) }
-        val ucArr = JSONArray(); useCaseKeys.forEach { ucArr.put(ucToString(it)) }; medObj.put("useCases", ucArr)
+        val useCaseStrings = linkedSetOf<String>()
+        m.useCaseToRoutes.keys.forEach { useCaseStrings.add(it) }
+        rulesForMedName(m.name).forEach { useCaseStrings.add(it.useCase) }
+        val ucArr = JSONArray(); useCaseStrings.forEach { ucArr.put(it) }; medObj.put("useCases", ucArr)
 
         val dosingArr = JSONArray()
         rulesForMedName(m.name).forEach { r ->
             dosingArr.put(JSONObject().apply {
-                put("useCase", ucToString(r.useCase))
+                put("useCase", r.useCase)
                 r.ageMinYears?.let { put("ageMinYears", it) }
                 r.ageMaxYears?.let { put("ageMaxYears", it) }
                 r.weightMinKg?.let { put("weightMinKg", it) }
@@ -939,7 +906,20 @@ private fun buildJsonFromEditor(
     }
     root.put("medications", medsArr)
     return root.toString(2)
+
+
 }
 
-private fun ucToString(key: UseCaseKey): String = key.name
 private fun trim0(d: Double): String = if (d % 1.0 == 0.0) d.toInt().toString() else d.toString()
+private fun formatNoTrailingZeros(v: Double): String {
+    val s = String.format(java.util.Locale.GERMANY, "%.3f", v)
+    return if (s.endsWith(",000")) {
+        s.substringBefore(",")
+    } else if (s.endsWith("00")) {
+        s.dropLast(2)
+    } else if (s.endsWith("0")) {
+        s.dropLast(1)
+    } else {
+        s
+    }
+}

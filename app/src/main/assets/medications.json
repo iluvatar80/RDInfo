@@ -1,39 +1,712 @@
-// app/src/main/assets/medications.json
 {
   "medications": [
     {
-      "id": "adrenalin",
-      "name": "Adrenalin",
-      "defaultConcentration": { "mg": 1.0, "ml": 1.0, "display": "1 mg / 1 ml" },
-      "useCases": ["REANIMATION"],
-      "sections": {
-        "indication": "Reanimation bei Kreislaufstillstand (z. B. asystol, PEA) und ggf. anhaltender schwerer Anaphylaxie nach Algorithmus.",
-        "contraindication": "Keine absolute Kontraindikation im Herz‑Kreislauf‑Stillstand; sonst Vorsicht u. a. bei KHK, Tachyarrhythmien, Hypertonie.",
-        "effect": "α₁: periphere Vasokonstriktion → erhöhte Koronar-/Zerebralperfusion; β₁: positiv inotrop/chronotrop; β₂: Bronchodilatation.",
-        "sideEffects": "Tachykardie, Arrhythmien, Hypertonie, Myokardischämie, Zittern, Angst, Kopfschmerz. Im Arrest klinisch nachrangig."
+      "id": "acetylsalicylsaeure",
+      "name": "Acetylsalicylsäure",
+      "defaultConcentration": {
+        "mg": 500,
+        "ml": 0,
+        "mgPerMl": 0,
+        "display": "500 mg \/ 0 ml"
       },
+      "sections": {
+        "indication": "Akutes Koronarsyndrom",
+        "contraindication": "Absolute Kontraindikation:\nSpätschwangerschaft (ab 28.SSW), Kinder < 12.LJ\nErstmalige Einnahme bei Asthma bronchiale\nEinnahme von Antikoagulantien, außer ASS 100mg\nBlutungsneigung\/akutes Trauma\nAkute Aortendissektion (Hinweis: BD-Differenz >20mmHg re\/li)\nNotfallmedizinisch „relative“ Kontraindikationen:\nZ.n. GI-Blutung, Magen-Darm-Ulcera\nSchwere Nierenfunktionsstörung",
+        "effect": "Hemmung der Thrombozytenaggregation",
+        "sideEffects": "Magenbeschwerden\nBlutungen (z.B. Magen-Darm-\/intrakraniell)\nÜberempfindlichkeitsreaktionen (Bronchospasmus, Hautreaktionen)\nReye-Syndrom bei Kindern"
+      },
+      "useCases": [
+        "Akutes Koronarsyndrom"
+      ],
       "dosing": [
         {
-          "useCase": "REANIMATION",
-          "ageMaxYears": 11,
-          "doseMgPerKg": 0.01,
-          "recommendedConcMgPerMl": 0.1,
+          "useCase": "Akutes Koronarsyndrom",
+          "ageMinYears": 12,
+          "fixedDoseMg": 250,
           "route": "i.v.",
-          "solutionText": "NaCl 0,9 %",
-          "totalPreparedMl": 10.0,
-          "maxDoseMg": 1.0,
-          "maxDoseText": "max. 1 mg pro Gabe",
-          "note": "< 12J.: 0,01mg/ kg KG i.v. (1:10 verdünnt mit NaCl 0,9%) alle 4 Minuten"
+          "solutionText": "Aqua",
+          "totalPreparedMl": 5
+        }
+      ]
+    },
+    {
+      "id": "adrenalin",
+      "name": "Adrenalin",
+      "defaultConcentration": {
+        "mg": 1,
+        "ml": 1,
+        "mgPerMl": 1,
+        "display": "1 mg \/ 1 ml"
+      },
+      "sections": {
+        "indication": "Reanimation, Anaphylaxie, Schwellung der oberen Atemwege\nweitere Indikation NA: Kardiogener Schock,\natropinresistente symptomatische Bradykardie (keine Zulassung)",
+        "contraindication": "bei den oben genannten Indikationen keine!",
+        "effect": "Vasokonstriktion (α1-Rezeptoren)\nSteigerung von Herzkraft und Frequenz (ß1-Rezeptoren)\nErweiterung der Bronchien (ß2-Rezeptoren)\nHemmung der Histaminfreisetzung",
+        "sideEffects": "Tachykardie, Herzrhythmusstörungen (bis Kammerflimmern),\nAP-Beschwerden, Tremor, Mydriasis, Hypertonie, Hyperglycämie\n→ In der Reanimation keine relevanten Nebenwirkungen"
+      },
+      "useCases": [
+        "Reanimation",
+        "Anaphylaxie",
+        "Schwellung der oberen Atemwege"
+      ],
+      "dosing": [
+        {
+          "useCase": "Anaphylaxie",
+          "ageMaxYears": 5,
+          "fixedDoseMg": 0.15,
+          "route": "i.m.",
+          "note": "<6J.: 0,15mg i.m. (pur in den seitlichen Oberschenkel), ggf. Repetition nach 5-10min"
         },
         {
-          "useCase": "REANIMATION",
+          "useCase": "Anaphylaxie",
+          "ageMinYears": 6,
+          "ageMaxYears": 11,
+          "fixedDoseMg": 0.3,
+          "route": "i.m.",
+          "note": "6.-11J.: 0,3mg i.m. (pur in den seitlichen Oberschenkel), ggf. Repetition nach 5-10min"
+        },
+        {
+          "useCase": "Anaphylaxie",
           "ageMinYears": 12,
-          "fixedDoseMg": 1.0,
-          "recommendedConcMgPerMl": 0.1,
+          "fixedDoseMg": 0.5,
+          "route": "i.m.",
+          "note": ">11 J.: 0,5mg i.m. (pur in den seitlichen Oberschenkel), ggf. Repetition nach 5-10min"
+        },
+        {
+          "useCase": "Reanimation",
+          "ageMinYears": 12,
+          "fixedDoseMg": 1,
           "route": "i.v.",
+          "note": "≥ 12J.: 1mg i.v. (1:10 verdünnt mit NaCl 0,9%) nach Schema",
           "solutionText": "NaCl 0,9 %",
-          "totalPreparedMl": 10.0,
-          "note": "≥ 12J.: 1mg i.v. (1:10 verdünnt mit NaCl 0,9%) alle 4 Minuten"
+          "totalPreparedMl": 10
+        },
+        {
+          "useCase": "Reanimation",
+          "ageMaxYears": 11,
+          "doseMgPerKg": 0.01,
+          "route": "i.v.",
+          "note": "< 12J.: 0,01mg\/ kg KG i.v. (1:10 verdünnt mit NaCl 0,9%) nach Schema",
+          "solutionText": "NaCl 0,9 %",
+          "totalPreparedMl": 10
+        },
+        {
+          "useCase": "Schwellung der oberen Atemwege",
+          "fixedDoseMg": 4,
+          "route": "p.i.",
+          "note": "Erw. und Kinder: 4 mg pur\nFlow: in Abhängigkeit der verwendeten Maske (z.B.: 8 l)\nAbbruchkriterien bei rückläufigem A-Problem:\nTachykardie >140\/min, BD syst.>160, ausgeprägte Herzrhythmusstörungen"
+        }
+      ]
+    },
+    {
+      "id": "amiodaron",
+      "name": "Amiodaron",
+      "defaultConcentration": {
+        "mg": 150,
+        "ml": 3,
+        "mgPerMl": 50,
+        "display": "150 mg \/ 3 ml"
+      },
+      "sections": {
+        "indication": "Defibrillationsresistentes Kammerflimmern\nVentrikuläre Tachykardie (VT)\nWeitere Indikation NA: Andere tachykarde Herzrhythmusstörungen",
+        "contraindication": "Notfallmedizinisch „relative“ Kontraindikationen:\nGlaukom (grüner Star), Schwangerschaft, Stillzeit",
+        "effect": "Parasympatholytikum (Hemmung des Parasympathikus)\n→Steigerung der Herzfrequenz",
+        "sideEffects": "Tachykardie, Pupillenerweiterung (→Sehstörungen), Mundtrockenheit, Schweißdrüsenhemmung („Atropinfieber“)\nRezeptorenblockade im ZNS (ZAS)\nevtl. Therapieversagen bei höhergradigem AV-Block"
+      },
+      "useCases": [
+        "Defibrillationsresistentes Kammerflimmern",
+        "Ventrikuläre Tachykardie (VT)"
+      ],
+      "dosing": [
+        {
+          "useCase": "Defibrillationsresistentes Kammerflimmern",
+          "ageMinYears": 12,
+          "fixedDoseMg": 300,
+          "route": "i.v.",
+          "note": "CPR: ≥ 12J.: 300 mg langsam i.v. nach 3.Schock, ggf. Repetition: 150 mg nach 5.Schock"
+        },
+        {
+          "useCase": "Defibrillationsresistentes Kammerflimmern",
+          "ageMaxYears": 11,
+          "doseMgPerKg": 5,
+          "route": "i.v.",
+          "note": "CPR: < 12J.: 5mg\/kgKG nach 3.Schock"
+        },
+        {
+          "useCase": "Ventrikuläre Tachykardie (VT)",
+          "fixedDoseMg": 150,
+          "route": "i.v.",
+          "note": "VT mit Puls: 150 mg als langsame Kurzinfusion in 250ml G5% i.v.",
+          "solutionText": "G5%",
+          "totalPreparedMl": 250
+        }
+      ]
+    },
+    {
+      "id": "atropin",
+      "name": "Atropin",
+      "defaultConcentration": {
+        "mg": 0.5,
+        "ml": 1,
+        "mgPerMl": 0.5,
+        "display": "0.5 mg \/ 1 ml"
+      },
+      "sections": {
+        "indication": "Symptomatische Bradykardie\nParasympathomimetikaintoxikation (z.B. E 605)\nWeitere Indikation NA: Narkoseeinleitung (v.a. mit Esketamin)",
+        "contraindication": "Notfallmedizinisch „relative“ Kontraindikationen:\nGlaukom (grüner Star), Schwangerschaft, Stillzeit",
+        "effect": "Parasympatholytikum (Hemmung des Parasympathikus)\n→Steigerung der Herzfrequenz",
+        "sideEffects": "Tachykardie, Pupillenerweiterung (→Sehstörungen), Mundtrockenheit, Schweißdrüsenhemmung („Atropinfieber“)\nRezeptorenblockade im ZNS (ZAS)\nevtl. Therapieversagen bei höhergradigem AV-Block"
+      },
+      "useCases": [
+        "Symptomatische Bradykardie",
+        "Parasympathomimetikaintoxikation (z.B. E 605)"
+      ],
+      "dosing": [
+        {
+          "useCase": "Parasympathomimetikaintoxikation (z.B. E 605)",
+          "fixedDoseMg": 2,
+          "route": "i.v.",
+          "note": "Gabe nach Wirkung (initial 2mg i.v.)\ncave: Antidot-Ampullen sind höher konzentriert\n1 Ampulle mit 10ml enthält 100mg Atropin; 1ml=10mg (Antidot→ NEF, Antidot-Koffer z.B.GW-MANV)"
+        },
+        {
+          "useCase": "Symptomatische Bradykardie",
+          "fixedDoseMg": 1,
+          "maxDoseMg": 3,
+          "maxDoseText": "max.",
+          "route": "i.v.",
+          "note": "1 mg i.v., ggf. Wiederholung nach 5min (max.3 mg) Anmerkung: lt. Zulassung Wiederholung erst nach 10min"
+        }
+      ]
+    },
+    {
+      "id": "diazepam",
+      "name": "Diazepam",
+      "defaultConcentration": {
+        "mg": 10,
+        "ml": 2,
+        "mgPerMl": 5,
+        "display": "10 mg \/ 2 ml"
+      },
+      "sections": {
+        "indication": "Cerebraler Krampfanfall, Fieberkrampf\nWeitere Indikation NA: Angst- und Erregungszustände",
+        "contraindication": "Absolute Kontraindikation:\nschwere Alkohol- \/Medikamentenintoxikation\nUnmöglichkeit der Beatmung\nKinder < 6 Monate\nMyasthenia gravis (sehr selten)",
+        "effect": "Benzodiazepin\nZentral sedierend, antikonvulsiv, anxiolytisch",
+        "sideEffects": "Atemdepression, Blutdruckabfall, Schwindel, paradoxe Reaktion mit Unruhe, anterograde Amnesie"
+      },
+      "useCases": [
+        "Cerebraler Krampfanfall"
+      ],
+      "dosing": [
+        {
+          "useCase": "Cerebraler Krampfanfall",
+          "fixedDoseMg": 5,
+          "route": "i.v.",
+          "note": "5mg langsam (Fachinfo: über 5min) i.v., ggf.1 x wiederholen, i.m. möglich\nDosishalbierung bei Senioren \/ Patienten mit Nieren- oder Leberschäden: →2,5mg i.v., ggf. 1x wiederholen.\nAnmerkung: Gem. Pyramidenprozess auch für Sedierung & Erregungszustände\nVorsicht: lange Halbwertzeit (24-100h)! antikonvulsive Wirkung: ca.20min\ni.m. Gabe nur, wenn wenn i.v. nicht möglich."
+        },
+        {
+          "useCase": "Cerebraler Krampfanfall",
+          "fixedDoseMg": 5,
+          "route": "i.m.",
+          "note": "5mg langsam (Fachinfo: über 5min) i.v., ggf.1 x wiederholen, i.m. möglich\nDosishalbierung bei Senioren \/ Patienten mit Nieren- oder Leberschäden: →2,5mg i.v., ggf. 1x wiederholen.\nAnmerkung: Gem. Pyramidenprozess auch für Sedierung & Erregungszustände\nVorsicht: lange Halbwertzeit (24-100h)! antikonvulsive Wirkung: ca.20min\ni.m. Gabe nur, wenn wenn i.v. nicht möglich."
+        }
+      ]
+    },
+    {
+      "id": "diazepam-rektiole-10mg-15kgkg",
+      "name": "Diazepam Rektiole 10mg (>15kgKG)",
+      "defaultConcentration": {
+        "mg": 10,
+        "ml": 2.5,
+        "mgPerMl": 4,
+        "display": "10 mg \/ 2.5 ml"
+      },
+      "sections": {
+        "indication": "Cerebraler Krampfanfall, Fieberkrampf",
+        "contraindication": "Absolute Kontraindikation:\nUnmöglichkeit der Beatmung\nKinder < 6 Monate\nMyasthenia gravis (sehr selten)",
+        "effect": "Benzodiazepin\nZentral sedierend, antikonvulsiv, anxiolytisch",
+        "sideEffects": "Atemdepression, Blutdruckabfall, Schwindel, paradoxe Reaktion mit Unruhe, anterograde Amnesie"
+      },
+      "useCases": [
+        "Cerebraler Krampfanfall, Fieberkrampf"
+      ],
+      "dosing": [
+        {
+          "useCase": "Cerebraler Krampfanfall, Fieberkrampf",
+          "weightMinKg": 15,
+          "fixedDoseMg": 10,
+          "route": "rektal",
+          "note": "Rektiolen: Kinder >15kgKG:10mg"
+        }
+      ]
+    },
+    {
+      "id": "diazepam-rektiole-5mg-15kgkg",
+      "name": "Diazepam Rektiole 5mg (<15kgKG)",
+      "defaultConcentration": {
+        "mg": 5,
+        "ml": 2.5,
+        "mgPerMl": 2,
+        "display": "5 mg \/ 2.5 ml"
+      },
+      "sections": {
+        "indication": "Cerebraler Krampfanfall, Fieberkrampf",
+        "contraindication": "Absolute Kontraindikation:\nUnmöglichkeit der Beatmung\nKinder < 6 Monate\nMyasthenia gravis (sehr selten)",
+        "effect": "Benzodiazepin\nZentral sedierend, antikonvulsiv, anxiolytisch",
+        "sideEffects": "Atemdepression, Blutdruckabfall, Schwindel, paradoxe Reaktion mit Unruhe, anterograde Amnesie"
+      },
+      "useCases": [
+        "Cerebraler Krampfanfall, Fieberkrampf"
+      ],
+      "dosing": [
+        {
+          "useCase": "Cerebraler Krampfanfall, Fieberkrampf",
+          "weightMaxKg": 15,
+          "fixedDoseMg": 5,
+          "route": "rektal",
+          "note": "Rektiolen: Kinder <15kgKG: 5mg"
+        }
+      ]
+    },
+    {
+      "id": "dimentiden",
+      "name": "Dimentiden",
+      "defaultConcentration": {
+        "mg": 4,
+        "ml": 4,
+        "mgPerMl": 1,
+        "display": "4 mg \/ 4 ml"
+      },
+      "sections": {
+        "indication": "Allergische Reaktion \/ anaphylaktischer Schock",
+        "contraindication": "Absolute Kontraindikation:\nbek.Unverträglichkeit\nNotfallmedizinisch „relative“ Kontraindikationen:\nKinder < 1 Jahr\nAkute Porphyrie",
+        "effect": "Hemmung der Histaminfreisetzung über Blockade der H1-Rezeptoren",
+        "sideEffects": "Müdigkeit, Sedierung\nKopfschmerzen\nTachykardie\nÜbelkeit"
+      },
+      "useCases": [
+        "Allergische Reaktion \/ anaphylaktischer Schock"
+      ],
+      "dosing": [
+        {
+          "useCase": "Allergische Reaktion \/ anaphylaktischer Schock",
+          "ageMinYears": 15,
+          "fixedDoseMg": 4,
+          "route": "i.v.",
+          "note": "Erw. 1 Ampulle,\nKinder 0,1 mg\/kgKG i.v.(langsam spritzen)"
+        },
+        {
+          "useCase": "Allergische Reaktion \/ anaphylaktischer Schock",
+          "ageMaxYears": 14,
+          "doseMgPerKg": 0.1,
+          "maxDoseMg": 4,
+          "route": "i.v.",
+          "note": "Erw. 1 Ampulle,\nKinder 0,1 mg\/kgKG i.v.(langsam spritzen)"
+        }
+      ]
+    },
+    {
+      "id": "esketamin",
+      "name": "Esketamin",
+      "defaultConcentration": {
+        "mg": 25,
+        "ml": 5,
+        "mgPerMl": 5,
+        "display": "25 mg \/ 5 ml"
+      },
+      "sections": {
+        "indication": "Indikationen: Schmerzzustände (NRS≥4)\nWeitere Indikation NA: Analgosedierung (v.a. bei PKL)\nNarkoseeinleitung bei Trauma\nTherapieresistenter Status asthmaticus",
+        "contraindication": "Absolute Kontraindikation:\nGCS<14,\nAkutes Koronarsyndrom\nEklampsie, drohende Geburt\nBDsyst. > 180mmHg\nIsolierte Augenverletzungen\nUnmöglichkeit der Beatmung, keine Absaug- und Beatmungsbereitschaft",
+        "effect": "Analgesie und Sedierung bei erhaltenen Schutzreflexen und Spontanatmung\nHerz-Kreislauf-Stimulation, Bronchodilatation\nWirkung über verschiedene zentrale und periphere Rezeptoren",
+        "sideEffects": "Zunahme des Sauerstoffverbrauchs durch Steigerung von Herzfrequenz Blutdruck, Herzminutenvolumen\nHirndrucksteigerung \/ Augeninnendrucksteigerung (lt. Fachinformation)\nAlbträume (→ Kombination mit Midazolam)\nVermehrte Speichelsekretion, Nystagmus"
+      },
+      "useCases": [
+        "Schmerzzustände (NRS≥4)"
+      ],
+      "dosing": [
+        {
+          "useCase": "Schmerzzustände (NRS≥4)",
+          "doseMgPerKg": 0.1,
+          "maxDoseMg": 25,
+          "route": "i.v.",
+          "note": "0,1mg\/kgKG i.v., sinnvoll runden:\nz.B.: bei <50kg KG: 5mg i.v., bei >50kgKG:10mg i.v.\nRepetition der halben Initialdosis wenn NRS>4 (Σmax. 25mg durch NotSan)\nVor Verabreichung einer Analgosedierung SAMPLER und Monitoring vervollständigen, Erweiterung des Standard-Monitorings durch Messung des endexspiratorischen CO2, großzügige O2-Gabe, Herstellung einer adäquaten Absaug- und Beatmungsbereitschaft\nAnmerkung: Aktuelle Studien sprechen gegen eine Steigerung von Hirn- &Augeninnendruck,\naber weiter in Fachinformation als Kontraindikation aufgeführt→ EtCO2\/O2-Nasenkanüle zum CO2-\nMonitoring verwenden! Bei Schwangeren muss das Risiko eines erhöhten Tonus in der Gebärmutter\ndurch Esketamin einem erhöhten Risiko des Blutdruckabfalls durch Fentanyl gegenübergestellt\nwerden → beides birgt das Risiko einer fetalen Minderversorgung"
+        },
+        {
+          "useCase": "Schmerzzustände (NRS≥4)",
+          "doseMgPerKg": 0.25,
+          "maxDoseMg": 25,
+          "route": "i.m.",
+          "note": "0,25mg\/kgKG i.m. (ca.1\/4 des Körpergewichts)\nRepetition der halben Initialdosis wenn NRS>4 (Σmax. 25mg durch NotSan)\nHinweis: Vor Verabreichung einer Analgosedierung SAMPLER und Monitoring vervollständigen, Erweiterung des Standard-Monitorings durch Messung des endexspiratorischen CO2, großzügige O2-Gabe, Herstellung einer adäquaten Absaug- und Beatmungsbereitschaft\nAnmerkung: Aktuelle Studien sprechen gegen eine Steigerung von Hirn- &Augeninnendruck,\naber weiter in Fachinformation als Kontraindikation aufgeführt→ EtCO2\/O2-Nasenkanüle zum CO2-\nMonitoring verwenden! Bei Schwangeren muss das Risiko eines erhöhten Tonus in der Gebärmutter\ndurch Esketamin einem erhöhten Risiko des Blutdruckabfalls durch Fentanyl gegenübergestellt\nwerden → beides birgt das Risiko einer fetalen Minderversorgung"
+        }
+      ]
+    },
+    {
+      "id": "fentanyl",
+      "name": "Fentanyl",
+      "defaultConcentration": {
+        "mg": 0.1,
+        "ml": 2,
+        "mgPerMl": 0.05,
+        "display": "0.1 mg \/ 2 ml"
+      },
+      "sections": {
+        "indication": "Schwere Schmerzzustände (NRS ≥ 4)\nund Kontraindikation gegen Esketamin (z.B. Hypertension)",
+        "contraindication": "Absolute Kontraindikation:\nGCS<14, akute kardiopulmonale Beeinträchtigung, Schock\nUnmöglichkeit der Beatmung\nkeine Absaug- und Beatmungsbereitschaft\nKolikartige Schmerzen\nVorherige Gabe von Esketamin",
+        "effect": "Opiat (s.BtMG§13)\nWirkung über Opioidrezeptoren\nZentrale Hemmung der Schmerzempfindung\nZentrale Hemmung des Atemantriebs\nSedierung",
+        "sideEffects": "Ausgeprägte Atemdepression bis Apnoe (Antagonisierung durch Naloxon)\nBrustkorbstarre bei schneller Gabe\nGefäßerweiterung mit Blutdruckabfall (besonders bei Volumenmangel!)\nBewusstseinstrübung\nHemmung des Hustenreflexes\nPupillenverengung\nÜbelkeit und Erbrechen (→ ggf. Vomex therapeutisch)"
+      },
+      "useCases": [
+        "Schwere Schmerzzustände (NRS ≥ 4)"
+      ],
+      "dosing": [
+        {
+          "useCase": "Schwere Schmerzzustände (NRS ≥ 4)",
+          "fixedDoseMg": 0.05,
+          "maxDoseMg": 0.1,
+          "route": "i.v.",
+          "note": "0,05mg, ggf. Wiederholung nach 2min (max.0,1mg durch NotSan)\nDokumentation: Entsprechend dem Betäubungsmittelgesetz (BtmG) muss über die Lagerung und Gabe von Opiaten genauestens Buch geführt werden. Es muss jederzeit der Bestand ersichtlich sein und ebenso nachvollziehbar wie Abgänge von Medikamenten verwendet wurden.\nAlso bei Gabe im Einsatz muss der Patienten Name, Geburtsdatum und Einsatznummer dokumentiert sein. Die Gabe muss ebenfalls in der Einsatzdokumentation erfasst werden. Ein Bruch der Ampulle muss ebenfalls erfasst werden und entsprechend gegengezeichnet werden. Die Dokumentation hat nach Maßgabe der Dienstanweiseung DA02-3 zu erfolgen."
+        }
+      ]
+    },
+    {
+      "id": "furosemid",
+      "name": "Furosemid",
+      "defaultConcentration": {
+        "mg": 40,
+        "ml": 4,
+        "mgPerMl": 10,
+        "display": "40 mg \/ 4 ml"
+      },
+      "sections": {
+        "indication": "Akute Linksherzinsuffizienz",
+        "contraindication": "Absolute Kontraindikation:\nBDsyst. <120mmHg, Dialysepatient\nNotfallmedizinisch „relative“ Kontraindikationen:\nHarnabflussbehinderung\nSchwere Kaliummangelzustände\nSchwangerschaft und Stillzeit: strenge Indikationsstellung",
+        "effect": "Diuretikum\nHemmung der Natriumrückresorption in der Niere\n→ vermehrte Urinausscheidung\n→ Vorlastsenkung durch Volumenverlust\n→ Entlastung des Herzens",
+        "sideEffects": "Blutdruckabfall (v.a. bei zu schneller Injektion!)\nErhöhte Ausscheidung aller Elektrolyte (v.a. Kalium)\nim Verlauf: Thrombosegefahr durch Zunahme des Hämatokrit"
+      },
+      "useCases": [
+        "Akute Linksherzinsuffizienz"
+      ],
+      "dosing": [
+        {
+          "useCase": "Akute Linksherzinsuffizienz",
+          "fixedDoseMg": 20,
+          "maxDoseMg": 40,
+          "route": "i.v.",
+          "note": "20mg langsam über 5min, ggf. 1x wiederholen (max. 40mg durch NotSan)\nDosishalbierung bei Niereninsuffizienz\n→wichtig: Blutdruckmessung!"
+        }
+      ]
+    },
+    {
+      "id": "glucose-20",
+      "name": "Glucose 20%",
+      "defaultConcentration": {
+        "mg": 2000,
+        "ml": 10,
+        "mgPerMl": 200,
+        "display": "2000 mg \/ 10 ml"
+      },
+      "sections": {
+        "indication": "Symptomatische Hypoglykämie",
+        "contraindication": "Absolute Kontraindikation:\nUnsichere Lage i.v.-Zugang, BZ ≥ 100mg\/dl",
+        "effect": "Erhöhung des Blutglukosespiegels mit sofortiger Wirkung",
+        "sideEffects": "Venenreizend\nGewebsnekrosen bei Paravasat (=Medikament gelangt direkt ins Gewebe)"
+      },
+      "useCases": [
+        "Symptomatische Hypoglykämie"
+      ],
+      "dosing": [
+        {
+          "useCase": "Symptomatische Hypoglykämie",
+          "fixedDoseMg": 4000,
+          "route": "i.v.",
+          "note": "4g (=20ml G20%), ggf. wiederholen bis Patient wieder ansprechbar\nGabe unter laufender Infusion\nBei erhaltenen Schutzreflexen orale Gabe!\nCave: Umverteilung nach 1-2h\nAnmerkung: 2ml Glukose 20% wirkt lt. Studien bei Säuglingen für ca.10min schmerzlindernd und führt dadurch zu einer besseren Toleranz der Venenpunktion"
+        }
+      ]
+    },
+    {
+      "id": "heparin",
+      "name": "Heparin",
+      "defaultConcentration": {
+        "mg": 5000,
+        "ml": 0.5,
+        "mgPerMl": 10000,
+        "display": "5000 mg \/ 0.5 ml"
+      },
+      "sections": {
+        "indication": "Akutes Koronarsyndrom, STEMI\nWeitere Indikation NA: Thromboseprophylaxe, Lungenembolie",
+        "contraindication": "Absolute Kontraindikation:\nEinnahme von Antikoagulantien (außer ASS 100mg)\nBlutungsneigung \/ akutes Trauma\nFehlen von ST-Hebungen im EKG\nHIT= Heparininduzierte Thrombozytopenie\nNotfallmedizinisch „relative“ Kontraindikationen:\nMagen-Darm-Geschwüre\nSchwere Leber-, Nieren-, Pankreaserkrankungen",
+        "effect": "Hemmung der Blutgerinnung über Hemmung der Gerinnungsfaktoren",
+        "sideEffects": "Blutungen\nThrombozytenabfall (HIT)"
+      },
+      "useCases": [
+        "Akutes Koronarsyndrom, STEMI"
+      ],
+      "dosing": [
+        {
+          "useCase": "Akutes Koronarsyndrom, STEMI",
+          "fixedDoseMg": 5000,
+          "route": "i.v.",
+          "note": "5.000 I.E. i.v."
+        }
+      ]
+    },
+    {
+      "id": "midazolam",
+      "name": "Midazolam",
+      "defaultConcentration": {
+        "mg": 5,
+        "ml": 5,
+        "mgPerMl": 1,
+        "display": "5 mg \/ 5 ml"
+      },
+      "sections": {
+        "indication": "Analgosedierung mit Esketamin\nWeitere Indikation NA: Sedierung, Erregungszustand\nZerebraler Krampfanfall (keine Zulassung)",
+        "contraindication": "Absolute Kontraindikation:\nschwere Alkohol- \/Medikamentenintoxikation, GCS<14\nDeutlich eingeschränkte Atemfunktion, Unmöglichkeit der Beatmung\nKinder < 6 Monate\nMyasthenia gravis (sehr selten)",
+        "effect": "Benzodiazepin\nZentral sedierend, antikonvulsiv, anxiolytisch",
+        "sideEffects": "Atemdepression, Blutdruckabfall, Schwindel, paradoxe Reaktion mit Unruhe, anterograde Amnesie"
+      },
+      "useCases": [
+        "Analgosedierung mit Esketamin"
+      ],
+      "dosing": [
+        {
+          "useCase": "Analgosedierung mit Esketamin",
+          "ageMinYears": 1,
+          "doseMgPerKg": 0.01,
+          "route": "i.v.",
+          "note": "Analgosedierung: 0,01mg\/kgKG i.v., z.B. bei > 50kgKG: 1mg i.v.\nDosishalbierung bei Senioren \/ alkoholisierten Patienten, z.B. 0,5mg i.v.\nRepetitionsdosis bei Agitation nach Gabe von Esketamin: halbe Initialdosis.\nMaximal 2 Repetitionsdosen\nVorsicht: Verschiedene Ampullenkonzentrationen im Handel!!!\nAnmerkung: Das dazu derzeit im Handel erhältliche Präparat (Buccolam®) ist bei Kindern und Jugendlichen unter 18 Jahren verordnungsfähig, bei Erwachsenen nur als off-label Verordnung verfügbar, und wird bukkal (in die Wangentasche) appliziert."
+        }
+      ]
+    },
+    {
+      "id": "morphin",
+      "name": "Morphin",
+      "defaultConcentration": {
+        "mg": 10,
+        "ml": 1,
+        "mgPerMl": 10,
+        "display": "10 mg \/ 1 ml"
+      },
+      "sections": {
+        "indication": "Schwere Schmerzzustände bei ACS und Trauma\n(z.B. nach Kardioversion\/Pacing) wenn NRS ≥ 4\nWeitere Indikation NA: Sedierung, Lungenödem",
+        "contraindication": "Absolute Kontraindikation:\nGCS<14, akute pulmonale Beeinträchtigung, Schock\nUnmöglichkeit der Beatmung, keine Absaug- und Beatmungsbereitschaft\nKolikartige Schmerzen",
+        "effect": "Opiat (s.BtMG§13), Wirkung über Opioidrezeptoren\nZentrale Hemmung der Schmerzempfindung \/ Atemantriebs\nLeichte Sedierung, Senkung des Drucks in der Arteria pulmonalis",
+        "sideEffects": "Atemdepression, Hemmung des Hustenreflexes (Antagonisierung durch Naloxon)\nBewusstseinstrübung, Pupillenverengung\nÜbelkeit und Erbrechen\nHistaminfreisetzung (Flush)\nGefäßerweiterung mit Blutdruckabfall"
+      },
+      "useCases": [
+        "Schwere Schmerzzustände bei ACS und Trauma"
+      ],
+      "dosing": [
+        {
+          "useCase": "Schwere Schmerzzustände bei ACS und Trauma",
+          "fixedDoseMg": 2,
+          "maxDoseMg": 10,
+          "route": "i.v.",
+          "note": "2mg i.v. (ggf. alle 5min wiederholen); (max. 10mg durch NotSan)\nPraxis:10mg Morphin+ 9ml NaCl 0,9% =1mg\/ml→ 2ml der Mischung=2mg\nDokumentation: Entsprechend dem Betäubungsmittelgesetz (BtMG) muss über die Lagerung und Gabe von Opiaten genauestens Buch geführt werden. Es muss jederzeit der Bestand ersichtlich sein und ebenso nachvollziehbar wie Abgänge von Medikamenten verwendet wurden.\nAlso bei Gabe im Einsatz muss der Patienten Name, Geburtsdatum und Einsatznummer dokumentiert sein. Die Gabe muss ebenfalls in der Einsatzdokumentation erfasst werden. Ein Bruch der Ampulle muss ebenfalls erfasst werden und entsprechend gegengezeichnet werden. Die Dokumentation hat nach Maßgabe der Dienstanweiseung DA02-3 zu erfolgen.\nHinweis: Vor Verabreichung einer Analgosedierung SAMPLER und Monitoring vervollständigen, Erweiterung des Standardmonitorings durch Messung des endexspiratorischen CO2, großzügige O2-Gabe, Herstellung einer adäquaten Absaug- und Beatmungsbereitschaft!",
+          "solutionText": "NaCl 0,9%",
+          "totalPreparedMl": 10
+        }
+      ]
+    },
+    {
+      "id": "naloxon",
+      "name": "Naloxon",
+      "defaultConcentration": {
+        "mg": 0.4,
+        "ml": 1,
+        "mgPerMl": 0.4,
+        "display": "0.4 mg \/ 1 ml"
+      },
+      "sections": {
+        "indication": "Opiatintoxikation mit Atemdepression",
+        "contraindication": "Notfallmedizinisch „relative“ Kontraindikationen:\nMischintoxikationen",
+        "effect": "Direkter Antagonist an den Opiatrezeptoren\nVerdrängung nahezu aller Opiate aus der Rezeptorbindung",
+        "sideEffects": "Entzugssymptomatik, Schmerzen\nBlutdruckanstieg\nTachykardie, Herzrhythmusstörungen (besonders bei Kokainkonsum o.ä.)\nMyocardinfarkt bei KHK\/“Katecholaminsturm“\nLungenödem"
+      },
+      "useCases": [
+        "Opiatintoxikation mit Atemdepression"
+      ],
+      "dosing": [
+        {
+          "useCase": "Opiatintoxikation mit Atemdepression",
+          "fixedDoseMg": 0.08,
+          "route": "i.v.",
+          "note": "0,08mg alle 2min i.v.\nPraxis: 0,4mg Naloxon + 9ml NaCl 0,9% = 0,04mg\/ml\n→2ml der Mischung=0,08mg (max. 0,4mg durch NotSan i.v.)\nAlternative: 0,4mg pur i.m.\nAnmerkung: bei Antagonisierung von Drogenintoxikationen kommt es oft zu aggressivem Verhalten und gewalttätigen Handlungen der Patienten gegenüber dem RD,\nPat muss nach Antagonisierung im Krankenhaus überwacht werden!",
+          "solutionText": "NaCl 0,9%",
+          "totalPreparedMl": 10
+        },
+        {
+          "useCase": "Opiatintoxikation mit Atemdepression",
+          "fixedDoseMg": 0.4,
+          "route": "i.m.",
+          "note": "0,4 mg pur i.m. (max. 0,4mg durch NotSan i.v.)\nAnmerkung: bei Antagonisierung von Drogenintoxikationen kommt es oft zu aggressivem Verhalten und gewalttätigen Handlungen der Patienten gegenüber dem RD,\nPat muss nach Antagonisierung im Krankenhaus überwacht werden!"
+        }
+      ]
+    },
+    {
+      "id": "nitroglycerin",
+      "name": "Nitroglycerin",
+      "defaultConcentration": {
+        "mg": 0.4,
+        "ml": 0,
+        "mgPerMl": 0,
+        "display": "0.4 mg \/ 0 ml"
+      },
+      "sections": {
+        "indication": "Akute Linksherzinsuffizienz\n(ACS – nur bei begleitendem Lungenödem)",
+        "contraindication": "Absolute Kontraindikation: Pfefferminzölunverträglichkeit\nkein sicherer i.v.-Zugang\nBDsyst. < 120 mmHg\nRechtsventrikulärer Myokardinfarkt\nEinnahme von PDE-Hemmern (z.B.Viagra®) ≤ 48h\nNotfallmedizinisch „relative“ Kontraindikationen:\nVolumenmangel, Aortenklappenstenose\nV. a. Apoplex (zerebrale Perfusionsstörung mit Hypertension)\nerhöhter Hirndruck",
+        "effect": "Weitstellung der Blutgefäße (auch der Koronargefäße)\nVorlastsenkung (95% venöses Gefäßsystem)\nNachlastsenkung (5% arterielles Gefäßsystem)",
+        "sideEffects": "Blutdruckabfall, Tachykardie, Kopfschmerzen"
+      },
+      "useCases": [
+        "Akute Linksherzinsuffizienz\n(ACS – nur bei begleitendem Lungenödem)"
+      ],
+      "dosing": [
+        {
+          "useCase": "Akute Linksherzinsuffizienz\n(ACS – nur bei begleitendem Lungenödem)",
+          "fixedDoseMg": 0.4,
+          "maxDoseMg": 1.2,
+          "route": "s.l.",
+          "note": "0,4mg alle 5min s.l. (max.1,2mg durch NotSan)\nAnmerkung: weitere PDE-Hemmer Cialis®, Levitra® und Revatio®, auch zur Senkung eines\npulmonalen Hypertonus als Dauermedikation verordnet, Nitro senkt nicht die Mortalität der Patienten\nund hat ggf. negative Auswirkungen bei Reflextachykardie, „BDsyst.-Reserve„ für den ß-Blocker lassen,\nwelcher die Mortalität senkt. Rechtventrikuläre Myokardinfarkte haben häufig eine begleitende\nHypotonie. Nitroglycerin hat gemäß der neuen Leitlinien seinen Stellenwert verloren-> Einsatz nur\nnoch bei akuter Linksherzinsuffizienz mit Lungenödem."
+        }
+      ]
+    },
+    {
+      "id": "paracetamol",
+      "name": "Paracetamol",
+      "defaultConcentration": {
+        "mg": 1000,
+        "ml": 100,
+        "mgPerMl": 10,
+        "display": "1000 mg \/ 100 ml"
+      },
+      "sections": {
+        "indication": "Schwere abdominelle Schmerzen (NRS ≥ 4) (nicht traumatisch)",
+        "contraindication": "Kontraindikation: NRS < 4\nSchwere Leberinsuffizienz\nSchwere Alkohol-\/ Medikamentenintoxikation\nParacetamol-Gabe in den letzten 6 Stunden\nParacetamol-Überdosierung in den letzten 3 Wochen\nKinder < 6 Jahre",
+        "effect": "Schwache Analgesie\nFiebersenkung",
+        "sideEffects": "Veränderungen des Blutbildes\nBronchospasmus (Analgetikaasthma)"
+      },
+      "useCases": [
+        "Schwere abdominelle Schmerzen (NRS ≥ 4) (nicht traumatisch)"
+      ],
+      "dosing": [
+        {
+          "useCase": "Schwere abdominelle Schmerzen (NRS ≥ 4) (nicht traumatisch)",
+          "ageMinYears": 6,
+          "weightMinKg": 10,
+          "weightMaxKg": 49,
+          "doseMgPerKg": 15,
+          "maxDoseMg": 1000,
+          "route": "i.v.",
+          "note": "> 50Kg KG: 1g i.v., über mehrere Minuten\n10-50 Kg KG: 15mg\/ kg KG, langsam i.v., über mehrere Minuten\nKeine Repetitionsdosis"
+        },
+        {
+          "useCase": "Schwere abdominelle Schmerzen (NRS ≥ 4) (nicht traumatisch)",
+          "weightMinKg": 50,
+          "fixedDoseMg": 1000,
+          "maxDoseMg": 1000,
+          "route": "i.v.",
+          "note": "> 50Kg KG: 1g i.v., über mehrere Minuten\n10-50 Kg KG: 15mg\/ kg KG, langsam i.v., über mehrere Minuten\nKeine Repetitionsdosis"
+        }
+      ]
+    },
+    {
+      "id": "prednisolon",
+      "name": "Prednisolon",
+      "defaultConcentration": {
+        "mg": 250,
+        "ml": 0,
+        "mgPerMl": 0,
+        "display": "250 mg \/ 0 ml"
+      },
+      "sections": {
+        "indication": "Anaphylaxie\nObstruktion der unteren Atemwege\nWeitere Indikation NA: Lungenödem durch Inhalation toxischer Substanzen",
+        "contraindication": "Absolute Kontraindikation:\nAllergien auch auf Zusatzstoffe möglich",
+        "effect": "Kortikosteroid\nHormon der Nebenniere, Regulation zahlreicher Stoffwechselvorgänge\nEntzündungshemmung\nImmunsuppression\nErhöhung des Blutzuckerspiegels\nBeeinflussung des Elektrolythaushaltes",
+        "sideEffects": "Flush bei schneller Injektion\nHyperglykämie\nInfektionen im Verlauf"
+      },
+      "useCases": [
+        "Anaphylaxie",
+        "Obstruktion der unteren Atemwege"
+      ],
+      "dosing": [
+        {
+          "useCase": "Anaphylaxie",
+          "fixedDoseMg": 250,
+          "route": "i.v.",
+          "note": "• Anaphylaxie 250mg langsam i.v.",
+          "solutionText": "Aqua",
+          "totalPreparedMl": 5
+        },
+        {
+          "useCase": "Obstruktion der unteren Atemwege",
+          "fixedDoseMg": 100,
+          "route": "i.v.",
+          "note": "• Obstruktion der unteren Atemwege 100mg langsam i.v.",
+          "solutionText": "Aqua",
+          "totalPreparedMl": 5
+        }
+      ]
+    },
+    {
+      "id": "salbutamol",
+      "name": "Salbutamol",
+      "defaultConcentration": {
+        "mg": 2.5,
+        "ml": 2.5,
+        "mgPerMl": 1,
+        "display": "2.5 mg \/ 2.5 ml"
+      },
+      "sections": {
+        "indication": "Obstruktion der unteren Atemwege\n(z.B. Asthma bronchiale, exazerbierte COPD,\nInhalationstrauma (thermisch\/toxisch)",
+        "contraindication": "Absolute Kontraindikation:\nAkute kardiale Erkrankung (z.B. ACS, akute Linksherzinsuffizienz, ausgeprägte HRST)",
+        "effect": "ß2-Sympathomimetikum:\nStimulation der β2-Rezeptoren in den Bronchien → Bronchodilatation",
+        "sideEffects": "Tachykardie (Geringe Wirkung auf ß1-Rezeptoren am Herzen)\nHerzrhythmusstörungen, Angina pectoris, Unruhe, Muskelzittern, Kopfschmerzen Wehenhemmung"
+      },
+      "useCases": [
+        "Obstruktion der unteren Atemwege"
+      ],
+      "dosing": [
+        {
+          "useCase": "Obstruktion der unteren Atemwege",
+          "ageMinYears": 12,
+          "fixedDoseMg": 2.5,
+          "route": "p.i.",
+          "note": "> 11J: 2,5mg pur + 8l Flow O2\n4-11J: 1,25mg\nFlow in Abhängigkeit der verwendeten Maske\nAbbruchkriterien bei rückläufigem B-Problem: Tachykardie >140\/min, BD syst.>160\nAnmerkung: paradoxer Bronchospasmus möglich, Beginn der Verneblung nach Spo2-Messung, anschließend Vervollständigung des Monitorings und Anlage i.v.-Zugang (bei Kindern i.v.-Zugang nicht zwingend erforderlich)"
+        },
+        {
+          "useCase": "Obstruktion der unteren Atemwege",
+          "ageMinYears": 4,
+          "ageMaxYears": 11,
+          "fixedDoseMg": 1.25,
+          "route": "p.i.",
+          "note": "> 11J: 2,5mg pur + 8l Flow O2\n4-11J: 1,25mg\nFlow in Abhängigkeit der verwendeten Maske\nAbbruchkriterien bei rückläufigem B-Problem: Tachykardie >140\/min, BD syst.>160\nAnmerkung: paradoxer Bronchospasmus möglich, Beginn der Verneblung nach Spo2-Messung, anschließend Vervollständigung des Monitorings und Anlage i.v.-Zugang (bei Kindern i.v.-Zugang nicht zwingend erforderlich)"
+        }
+      ]
+    },
+    {
+      "id": "urapidil",
+      "name": "Urapidil",
+      "defaultConcentration": {
+        "mg": 25,
+        "ml": 5,
+        "mgPerMl": 5,
+        "display": "25 mg \/ 5 ml"
+      },
+      "sections": {
+        "indication": "Hypertensiver Notfall\nauch in Kombination mit: ACS, akute Linksherzinsuffizienz und Schlaganfall.\n(Auch in der Schwangerschaft nach Risikoabwägung)\nBlutdrucksenkung beim akuten Aortensyndrom",
+        "contraindication": "Absolute Kontraindikation:\nBDsyst <160mmHg; BDsyst <220mmHg bei V.a. Schlaganfall\nGCS < 10\nAortenstenose\nNotfallmedizinisch „relative“ Kontraindikationen:\nAortenklappenstenose, arteriovenöse Shunts",
+        "effect": "Antihypertensivum\nPeriphere Vasodilatation durch Blockade der α1-Rezeptoren\nZentrale Sympathikolyse\n→ keine kompensatorische Tachykardie\n→ keine Erhöhung des intrakraniellen Drucks",
+        "sideEffects": "Hypotonie bei Überdosierung\nSehr selten: Arrhythmien, Kopfschmerzen, Schwindel, Schweißausbruch, Erbrechen, Angina pectoris, Dyspnoe"
+      },
+      "useCases": [
+        "Hypertensiver Notfall"
+      ],
+      "dosing": [
+        {
+          "useCase": "Hypertensiver Notfall",
+          "fixedDoseMg": 5,
+          "maxDoseMg": 25,
+          "route": "i.v.",
+          "note": "5 mg langsam i.v., dann Blutdruckkontrolle,\nggf. nach 2min wiederholen, bis zu max.25mg durch NotSan\nZiel: Symptomfreiheit, BDsyst. um max. 20% senken, aber nicht <160mmHg"
         }
       ]
     }

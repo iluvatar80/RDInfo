@@ -4,34 +4,7 @@ package com.rdinfo.data
 import org.json.JSONArray
 import org.json.JSONObject
 
-/**
- * JSON‑basiertes Repository – keine fachlichen Hardcodes mehr.
- * Die Inhalte werden aus /app/src/main/assets/medications.json geladen,
- * das via [setLazyJsonLoader] bereitgestellt wird.
- */
-
-// ---- Use‑Cases ----
-
-enum class UseCaseKey { REANIMATION, ANAPHYLAXIE, OBERER_ATEMWEG_SCHWELLUNG, BRADYKARDIE, VENTRIKULAERE_TACHYKARDIE }
-
-fun useCaseLabel(key: UseCaseKey): String = when (key) {
-    UseCaseKey.REANIMATION -> "Reanimation"
-    UseCaseKey.ANAPHYLAXIE -> "Anaphylaxie"
-    UseCaseKey.OBERER_ATEMWEG_SCHWELLUNG -> "Schwellung der oberen Atemwege"
-    UseCaseKey.BRADYKARDIE -> "Bradykardie"
-    UseCaseKey.VENTRIKULAERE_TACHYKARDIE -> "Ventrikuläre Tachykardie (VT)"
-}
-
-fun useCaseKeyFromLabel(label: String): UseCaseKey? = when (label) {
-    "Reanimation" -> UseCaseKey.REANIMATION
-    "Anaphylaxie" -> UseCaseKey.ANAPHYLAXIE
-    "Schwellung der oberen Atemwege" -> UseCaseKey.OBERER_ATEMWEG_SCHWELLUNG
-    "Bradykardie" -> UseCaseKey.BRADYKARDIE
-    "Ventrikuläre Tachykardie (VT)" -> UseCaseKey.VENTRIKULAERE_TACHYKARDIE
-    else -> null
-}
-
-// ---- Datenmodelle (schlank, JSON‑freundlich) ----
+// ---- Datenmodelle (String-basierte UseCases) ----
 
 data class Concentration(val mg: Double, val ml: Double, val display: String) {
     val mgPerMl: Double get() = if (ml > 0.0) mg / ml else 0.0
@@ -45,7 +18,7 @@ data class MedicationInfoSections(
 )
 
 data class DosingRule(
-    val useCase: UseCaseKey,
+    val useCase: String,
     val ageMinYears: Int? = null,
     val ageMaxYears: Int? = null,
     val weightMinKg: Double? = null,
@@ -67,7 +40,8 @@ data class Medication(
     val id: String,
     val name: String,
     val defaultConcentration: Concentration? = null,
-    val useCases: List<UseCaseKey> = emptyList(),
+    val unit: String = "mg",
+    val useCases: List<String> = emptyList(),
     val sections: MedicationInfoSections? = null,
     val dosing: List<DosingRule> = emptyList()
 )
@@ -78,10 +52,8 @@ object MedicationRepository {
     @Volatile private var lazyJsonLoader: (() -> String?)? = null
     @Volatile private var meds: List<Medication> = emptyList()
 
-    /** In onCreate() setzen, z. B. mit assets.open("medications.json"). */
     fun setLazyJsonLoader(loader: () -> String?) { lazyJsonLoader = loader }
 
-    /** Für Tests/DI: direktes Laden aus String. */
     @Synchronized fun loadFromJsonString(json: String) { meds = parseMedications(JSONObject(json)) }
 
     @Synchronized
@@ -96,49 +68,41 @@ object MedicationRepository {
         }
     }
 
-    // ---- Öffentliche API für UI/Logik ----
-
     fun listMedications(): List<Medication> { ensureLoaded(); return meds }
 
-    /** Für das Medikamenten‑Dropdown. */
     fun getMedicationNames(): List<String> { ensureLoaded(); return meds.map { it.name }.sorted() }
 
     fun getMedicationByName(name: String): Medication? { ensureLoaded(); return meds.firstOrNull { it.name == name || it.id == name } }
 
     fun getUseCaseNamesForMedication(medicationName: String): List<String> {
         val med = getMedicationByName(medicationName) ?: return emptyList()
-        return med.useCases.map { useCaseLabel(it) }
+        return med.useCases
     }
 
-    /** Routen aus den Regeln, ohne Fallback‑Hardcode. */
     fun getRouteNamesForMedicationUseCase(medicationName: String, useCaseLabel: String): List<String> {
         val med = getMedicationByName(medicationName) ?: return emptyList()
-        val key = useCaseKeyFromLabel(useCaseLabel) ?: return emptyList()
-        return med.dosing.filter { it.useCase == key }.mapNotNull { it.route }.distinct()
+        return med.dosing.filter { it.useCase == useCaseLabel }.mapNotNull { it.route }.distinct()
     }
 
     fun getInfoSections(medicationName: String): MedicationInfoSections? = getMedicationByName(medicationName)?.sections
 
     fun findBestDosingRule(
         medicationName: String,
-        useCaseLabelOrKey: String,
+        useCaseLabel: String,
         ageYears: Int,
         weightKg: Double
-    ): DosingRule? = findBestDosingRuleWithRoute(medicationName, useCaseLabelOrKey, ageYears, weightKg, null)
+    ): DosingRule? = findBestDosingRuleWithRoute(medicationName, useCaseLabel, ageYears, weightKg, null)
 
     fun findBestDosingRuleWithRoute(
         medicationName: String,
-        useCaseLabelOrKey: String,
+        useCaseLabel: String,
         ageYears: Int,
         weightKg: Double,
         routeDisplayName: String?
     ): DosingRule? {
         val med = getMedicationByName(medicationName) ?: return null
-        val key = useCaseKeyFromLabel(useCaseLabelOrKey)
-            ?: runCatching { UseCaseKey.valueOf(useCaseLabelOrKey) }.getOrNull()
-            ?: return null
 
-        var candidates = med.dosing.filter { it.useCase == key }.filter { r ->
+        var candidates = med.dosing.filter { it.useCase == useCaseLabel }.filter { r ->
             val ageOk = (r.ageMinYears == null || ageYears >= r.ageMinYears) && (r.ageMaxYears == null || ageYears <= r.ageMaxYears)
             val wtOk = (r.weightMinKg == null || weightKg >= r.weightMinKg) && (r.weightMaxKg == null || weightKg <= r.weightMaxKg)
             ageOk && wtOk
@@ -161,8 +125,6 @@ object MedicationRepository {
         return candidates.maxBy { score(it) }
     }
 
-    // ---- JSON‑Parsing ----
-
     private fun parseMedications(root: JSONObject): List<Medication> {
         val list = mutableListOf<Medication>()
         val arr = root.optJSONArray("medications") ?: JSONArray()
@@ -173,6 +135,7 @@ object MedicationRepository {
     private fun parseMedication(obj: JSONObject): Medication {
         val id = obj.optString("id")
         val name = obj.optString("name", id)
+        val unit = obj.optString("unit", "mg")
         val defConc = obj.optJSONObject("defaultConcentration")?.let { dc ->
             Concentration(
                 mg = dc.optDouble("mg", Double.NaN),
@@ -180,30 +143,29 @@ object MedicationRepository {
                 display = dc.optString("display", "")
             )
         }
-        val useCases = mutableListOf<UseCaseKey>()
+        val useCases = mutableListOf<String>()
         val ucArr = obj.optJSONArray("useCases") ?: JSONArray()
         for (i in 0 until ucArr.length()) {
-            val raw = ucArr.optString(i)
-            val key = runCatching { UseCaseKey.valueOf(raw) }.getOrNull() ?: useCaseKeyFromLabel(raw)
-            if (key != null) useCases.add(key)
+            val useCase = ucArr.optString(i)
+            if (useCase.isNotBlank()) useCases.add(useCase)
         }
         val sections = obj.optJSONObject("sections")?.let { s ->
             MedicationInfoSections(
-                indication = s.optString("indication", null),
-                contraindication = s.optString("contraindication", null),
-                effect = s.optString("effect", null),
-                sideEffects = s.optString("sideEffects", null)
+                indication = s.optNullableString("indication"),
+                contraindication = s.optNullableString("contraindication"),
+                effect = s.optNullableString("effect"),
+                sideEffects = s.optNullableString("sideEffects")
             )
         }
         val dosing = mutableListOf<DosingRule>()
         val dArr = obj.optJSONArray("dosing") ?: JSONArray()
         for (i in 0 until dArr.length()) dArr.optJSONObject(i)?.let { parseDosingRule(it)?.also(dosing::add) }
-        return Medication(id = id, name = name, defaultConcentration = defConc, useCases = useCases, sections = sections, dosing = dosing)
+        return Medication(id = id, name = name, defaultConcentration = defConc, unit = unit, useCases = useCases, sections = sections, dosing = dosing)
     }
 
     private fun parseDosingRule(obj: JSONObject): DosingRule? {
-        val ucRaw = obj.optString("useCase", "")
-        val useCase = runCatching { UseCaseKey.valueOf(ucRaw) }.getOrNull() ?: useCaseKeyFromLabel(ucRaw) ?: return null
+        val useCase = obj.optString("useCase", "")
+        if (useCase.isBlank()) return null
         return DosingRule(
             useCase = useCase,
             ageMinYears = obj.optNullableInt("ageMinYears"),
@@ -224,8 +186,6 @@ object MedicationRepository {
         )
     }
 }
-
-// ---- JSONObject‑Helper ----
 
 private fun JSONObject.optNullableString(name: String): String? = if (has(name) && !isNull(name)) optString(name) else null
 private fun JSONObject.optNullableInt(name: String): Int? = if (has(name) && !isNull(name)) optInt(name) else null
