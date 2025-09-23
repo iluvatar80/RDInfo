@@ -424,11 +424,12 @@
     {
       "id": "heparin",
       "name": "Heparin",
+      "unit": "I.E.",
       "defaultConcentration": {
         "mg": 5000,
         "ml": 0.5,
         "mgPerMl": 10000,
-        "display": "5000 mg \/ 0.5 ml"
+        "display": "5000 I.E. \/ 0.5 ml"
       },
       "sections": {
         "indication": "Akutes Koronarsyndrom, STEMI\nWeitere Indikation NA: Thromboseprophylaxe, Lungenembolie",
@@ -544,11 +545,12 @@
     {
       "id": "nitroglycerin",
       "name": "Nitroglycerin",
+      "unit": "Hub",
       "defaultConcentration": {
         "mg": 0.4,
         "ml": 0,
         "mgPerMl": 0,
-        "display": "0.4 mg \/ 0 ml"
+        "display": "0.4 mg \/ 1 Hub"
       },
       "sections": {
         "indication": "Akute Linksherzinsuffizienz\n(ACS – nur bei begleitendem Lungenödem)",
